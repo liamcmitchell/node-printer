@@ -1,8 +1,9 @@
 {
   "name": "node-printer",
-  "description": "Node.js printer bindings",
   "version": "0.6.30",
+  "description": "Node.js printer bindings",
   "homepage": "https://github.com/liamcmitchell/node-printer",
+  "license": "MIT",
   "contributors": [
     "Liam Mitchell <liam.mitchell@siemens.com>",
     "Ion Lupascu <ionlupascu@gmail.com>",
@@ -14,21 +15,28 @@
     "type": "git",
     "url": "git://github.com/liamcmitchell/node-printer.git"
   },
-  "engines": {
-    "node": ">= 20.0.0"
-  },
-  "scripts": {
-    "install": "node-gyp rebuild",
-    "rebuild": "node-gyp rebuild"
-  },
-  "license": "MIT",
   "main": "./lib/printer",
   "types": "types/index.d.ts",
-  "devDependencies": {
-    "node-gyp": "^12.3.0",
-    "node-abi": "^4.31.0"
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "rebuild": "node-gyp rebuild",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --write && clang-format -i -style=file src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp src/macros.hh",
+    "format:check": "oxfmt --check"
   },
   "dependencies": {
     "nan": "^2.26.2"
+  },
+  "devDependencies": {
+    "clang-format-node": "^3.0.1",
+    "node-abi": "^4.31.0",
+    "node-gyp": "^12.3.0",
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
+    "typescript": "^6.0.2"
+  },
+  "engines": {
+    "node": ">= 20.0.0"
   }
 }

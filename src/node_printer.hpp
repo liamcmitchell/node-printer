@@ -57,8 +57,8 @@ MY_NODE_MODULE_CALLBACK(getPrinterDriverOptions);
  */
 MY_NODE_MODULE_CALLBACK(getJob);
 
-//TODO
-/** Set job command. 
+// TODO
+/** Set job command.
  * arguments:
  * @param printer name String
  * @param job id Number
@@ -84,32 +84,30 @@ MY_NODE_MODULE_CALLBACK(getSupportedPrintFormats);
  */
 MY_NODE_MODULE_CALLBACK(getSupportedJobCommands);
 
-//TODO:
-// optional ability to get printer spool
-
+// TODO:
+//  optional ability to get printer spool
 
 // util class
 
 /** Memory value class management to avoid memory leak
  * TODO: move to std::unique_ptr on switching to C++11
-*/
-template<typename Type>
-class MemValueBase
-{
+ */
+template <typename Type> class MemValueBase {
 public:
-    MemValueBase(): _value(NULL) {}
+  MemValueBase() : _value(NULL) {}
 
-    /** Destructor. The allocated memory will be deallocated
-    */
-    virtual ~MemValueBase() {}
+  /** Destructor. The allocated memory will be deallocated
+   */
+  virtual ~MemValueBase() {}
 
-    Type * get() {return _value; }
-    Type * operator ->() { return &_value; }
-    operator bool() const { return (_value != NULL); }
+  Type *get() { return _value; }
+  Type *operator->() { return &_value; }
+  operator bool() const { return (_value != NULL); }
+
 protected:
-    Type *_value;
+  Type *_value;
 
-    virtual void free() {};
+  virtual void free() {};
 };
 
 /**
@@ -118,6 +116,7 @@ protected:
  * @param oData - destination data
  * @return TRUE if value is String or Buffer, FALSE otherwise
  */
-bool getStringOrBufferFromV8Value(v8::Local<v8::Value> iV8Value, std::string &oData);
+bool getStringOrBufferFromV8Value(v8::Local<v8::Value> iV8Value,
+                                  std::string &oData);
 
 #endif
