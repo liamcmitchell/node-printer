@@ -1,5 +1,4 @@
-var printer = require("../lib"),
-  util = require("util");
-console.log(
-  "installed printers:\n" + util.inspect(printer.getPrinters(), { colors: true, depth: 10 }),
-);
+import * as printer from "../lib/index.js";
+import { inspect } from "node:util";
+
+console.log("installed printers:\n" + inspect(printer.getPrinters(), { colors: true, depth: 10 }));

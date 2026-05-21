@@ -1,6 +1,7 @@
-var printer = require("../lib"),
-  util = require("util"),
-  printerName = "Foxit Reader PDF Printer",
+import * as printer from "../lib/index.js";
+import { inspect } from "node:util";
+
+var printerName = "Foxit Reader PDF Printer",
   printerFormat = "TEXT";
 
 printer.printDirect({
@@ -15,7 +16,7 @@ printer.printDirect({
   success: function (jobID) {
     console.log("sent to printer with ID: " + jobID);
     var jobInfo = printer.getJob(printerName, jobID);
-    console.log("current job info:" + util.inspect(jobInfo, { depth: 10, colors: true }));
+    console.log("current job info:" + inspect(jobInfo, { depth: 10, colors: true }));
     if (jobInfo.status.indexOf("PRINTED") !== -1) {
       console.log("too late, already printed");
       return;
@@ -26,7 +27,7 @@ printer.printDirect({
     try {
       console.log(
         "current job info:" +
-          util.inspect(printer.getJob(printerName, jobID), { depth: 10, colors: true }),
+          inspect(printer.getJob(printerName, jobID), { depth: 10, colors: true }),
       );
     } catch (err) {
       console.log("job deleted. err:" + err);

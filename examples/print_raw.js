@@ -1,4 +1,4 @@
-﻿var printer = require("../lib");
+﻿import * as printer from "../lib/index.js";
 
 printer.printDirect({
   data: "print from Node.JS buffer", // or simple String: "some text"

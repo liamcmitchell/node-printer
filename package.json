@@ -15,8 +15,15 @@
     "type": "git",
     "url": "git://github.com/liamcmitchell/node-printer.git"
   },
-  "main": "./lib/printer",
-  "types": "types/index.d.ts",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
+    }
+  },
   "scripts": {
     "install": "node-gyp rebuild",
     "rebuild": "node-gyp rebuild",
@@ -37,6 +44,6 @@
     "typescript": "^6.0.2"
   },
   "engines": {
-    "node": ">= 20.0.0"
+    "node": ">= 22.0.0"
   }
 }

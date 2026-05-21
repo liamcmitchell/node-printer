@@ -1,5 +1,6 @@
-﻿var printer = require("../lib"),
-  template = 'N\nS4\nD15\nq400\nR\nB20,10,0,1,2,30,173,B,"barcode"\nP0\n';
+﻿import * as printer from "../lib/index.js";
+
+var template = 'N\nS4\nD15\nq400\nR\nB20,10,0,1,2,30,173,B,"barcode"\nP0\n';
 
 function printZebra(barcode_text, printer_name) {
   printer.printDirect({

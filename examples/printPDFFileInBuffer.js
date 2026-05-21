@@ -1,9 +1,10 @@
 // Windows does not support PDF formats, but you can use imagemagick-native to achieve conversion from PDF to EMF.
 
-var printer = require("../lib"),
-  fs = require("fs"),
-  path = require("path"),
-  filename = process.argv[2],
+import { readFile } from "node:fs";
+import path from "node:path";
+import * as printer from "../lib/index.js";
+
+var filename = process.argv[2],
   printername = process.argv[3];
 
 if (process.platform == "win32") {
@@ -17,7 +18,7 @@ if (!filename || filename == "-h") {
 filename = path.resolve(process.cwd(), filename);
 console.log("printing file name " + filename);
 
-fs.readFile(filename, function (err, data) {
+readFile(filename, function (err, data) {
   if (err) {
     console.error("err:" + err);
     return;
