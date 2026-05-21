@@ -1,10 +1,7 @@
 #ifndef NODE_PRINTER_HPP
 #define NODE_PRINTER_HPP
 
-#include "macros.hh"
-
-#include <node.h>
-#include <v8.h>
+#include <napi.h>
 
 #include <string>
 
@@ -18,7 +15,7 @@
  *
  * @returns true for success, false for failure.
  */
-MY_NODE_MODULE_CALLBACK(PrintDirect);
+Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs);
 
 /**
  * Send file to printer
@@ -29,33 +26,33 @@ MY_NODE_MODULE_CALLBACK(PrintDirect);
  *
  * @returns jobId for success, or error message for failure.
  */
-MY_NODE_MODULE_CALLBACK(PrintFile);
+Napi::Value PrintFile(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve all printers and jobs
  * posix: minimum version: CUPS 1.1.21/OS X 10.4
  */
-MY_NODE_MODULE_CALLBACK(getPrinters);
+Napi::Value getPrinters(const Napi::CallbackInfo &iArgs);
 
 /**
  * Return default printer name, if null then default printer is not set
  */
-MY_NODE_MODULE_CALLBACK(getDefaultPrinterName);
+Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve printer info and jobs
  * @param printer name String
  */
-MY_NODE_MODULE_CALLBACK(getPrinter);
+Napi::Value getPrinter(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve printer driver info
  * @param printer name String
  */
-MY_NODE_MODULE_CALLBACK(getPrinterDriverOptions);
+Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve job info
  *  @param printer name String
  *  @param job id Number
  */
-MY_NODE_MODULE_CALLBACK(getJob);
+Napi::Value getJob(const Napi::CallbackInfo &iArgs);
 
 // TODO
 /** Set job command.
@@ -74,15 +71,15 @@ MY_NODE_MODULE_CALLBACK(getJob);
  *      "RETAIN"
  *      "RELEASE"
  */
-MY_NODE_MODULE_CALLBACK(setJob);
+Napi::Value setJob(const Napi::CallbackInfo &iArgs);
 
 /** Get supported print formats for printDirect. It depends on platform
  */
-MY_NODE_MODULE_CALLBACK(getSupportedPrintFormats);
+Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs);
 
 /** Get supported job commands for setJob method
  */
-MY_NODE_MODULE_CALLBACK(getSupportedJobCommands);
+Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs);
 
 // TODO:
 //  optional ability to get printer spool
@@ -109,14 +106,5 @@ protected:
 
   virtual void free() {};
 };
-
-/**
- * try to extract String or buffer from v8 value
- * @param iV8Value - source v8 value
- * @param oData - destination data
- * @return TRUE if value is String or Buffer, FALSE otherwise
- */
-bool getStringOrBufferFromV8Value(v8::Local<v8::Value> iV8Value,
-                                  std::string &oData);
 
 #endif

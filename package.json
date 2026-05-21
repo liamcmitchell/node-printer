@@ -29,11 +29,11 @@
     "rebuild": "node-gyp rebuild",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format": "oxfmt --write && clang-format -i -style=file src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp src/macros.hh",
+    "format": "oxfmt --write && clang-format -i -style=file src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp",
     "format:check": "oxfmt --check"
   },
   "dependencies": {
-    "nan": "^2.26.2"
+    "node-addon-api": "^8.2.2"
   },
   "devDependencies": {
     "clang-format-node": "^3.0.1",

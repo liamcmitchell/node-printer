@@ -200,85 +200,86 @@ const StatusMapType &getJobCommandMap() {
   return result;
 }
 
-void parseJobObject(JOB_INFO_2W *job,
-                    v8::Local<v8::Object> result_printer_job) {
-  MY_NODE_MODULE_ISOLATE_DECL
+void parseJobObject(JOB_INFO_2W *job, Napi::Object result_printer_job) {
+  Napi::Env env = result_printer_job.Env();
   // Common fields
   // DWORD                JobId;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("id"),
-           V8_VALUE_NEW(Number, job->JobId));
-#define ADD_V8_STRING_PROPERTY(name, key)                                      \
-  if ((job->##key != NULL) && (*job->##key != L'\0')) {                        \
-    Nan::Set(result_printer_job, V8_STRING_NEW_UTF8(#name),                    \
-             V8_STRING_NEW_2BYTES((uint16_t *)job->##key));                    \
-  }
+  result_printer_job.Set(Napi::String::New(env, "id"),
+                         Napi::Number::New(env, job->JobId));
+  auto addJobStringProperty = [&](const char *name, LPCWSTR value) {
+    if ((value != NULL) && (*value != L'\0')) {
+      result_printer_job.Set(
+          name,
+          Napi::String::New(env, reinterpret_cast<const char16_t *>(value)));
+    }
+  };
   // LPTSTR               pPrinterName;
-  ADD_V8_STRING_PROPERTY(name, pPrinterName)
+  addJobStringProperty("name", job->pPrinterName);
   // LPTSTR               pPrinterName;
-  ADD_V8_STRING_PROPERTY(printerName, pPrinterName);
+  addJobStringProperty("printerName", job->pPrinterName);
   // LPTSTR               pUserName;
-  ADD_V8_STRING_PROPERTY(user, pUserName);
+  addJobStringProperty("user", job->pUserName);
   // LPTSTR               pDatatype;
-  ADD_V8_STRING_PROPERTY(format, pDatatype);
+  addJobStringProperty("format", job->pDatatype);
   // DWORD                Priority;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("priority"),
-           V8_VALUE_NEW(Number, job->Priority));
+  result_printer_job.Set(Napi::String::New(env, "priority"),
+                         Napi::Number::New(env, job->Priority));
   // DWORD                Size;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("size"),
-           V8_VALUE_NEW(Number, job->Size));
+  result_printer_job.Set(Napi::String::New(env, "size"),
+                         Napi::Number::New(env, job->Size));
   // DWORD                Status;
-  v8::Local<v8::Array> result_printer_job_status = V8_VALUE_NEW_DEFAULT(Array);
+  Napi::Array result_printer_job_status = Napi::Array::New(env);
   int i_status = 0;
   for (StatusMapType::const_iterator itStatus = getJobStatusMap().begin();
        itStatus != getJobStatusMap().end(); ++itStatus) {
     if (job->Status & itStatus->second) {
-      Nan::Set(result_printer_job_status, i_status++,
-               V8_STRING_NEW_UTF8(itStatus->first.c_str()));
+      result_printer_job_status.Set(
+          i_status++, Napi::String::New(env, itStatus->first.c_str()));
     }
   }
   // LPTSTR               pStatus;
   if ((job->pStatus != NULL) && (*job->pStatus != L'\0')) {
-    Nan::Set(result_printer_job_status, i_status++,
-             V8_STRING_NEW_2BYTES((uint16_t *)job->pStatus));
+    result_printer_job_status.Set(
+        i_status++, Napi::String::New(env, reinterpret_cast<const char16_t *>(
+                                               (uint16_t *)) job->pStatus));
   }
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("status"),
-           result_printer_job_status);
+  result_printer_job.Set(Napi::String::New(env, "status"),
+                         result_printer_job_status);
 
   // Specific fields
   // LPTSTR               pMachineName;
-  ADD_V8_STRING_PROPERTY(machineName, pMachineName);
+  addJobStringProperty("machineName", job->pMachineName);
   // LPTSTR               pDocument;
-  ADD_V8_STRING_PROPERTY(document, pDocument);
+  addJobStringProperty("document", job->pDocument);
   // LPTSTR               pNotifyName;
-  ADD_V8_STRING_PROPERTY(notifyName, pNotifyName);
+  addJobStringProperty("notifyName", job->pNotifyName);
   // LPTSTR               pPrintProcessor;
-  ADD_V8_STRING_PROPERTY(printProcessor, pPrintProcessor);
+  addJobStringProperty("printProcessor", job->pPrintProcessor);
   // LPTSTR               pParameters;
-  ADD_V8_STRING_PROPERTY(parameters, pParameters);
+  addJobStringProperty("parameters", job->pParameters);
   // LPTSTR               pDriverName;
-  ADD_V8_STRING_PROPERTY(driverName, pDriverName);
-#undef ADD_V8_STRING_PROPERTY
+  addJobStringProperty("driverName", job->pDriverName);
   // LPDEVMODE            pDevMode;
   // PSECURITY_DESCRIPTOR pSecurityDescriptor;
   // DWORD                Position;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("position"),
-           V8_VALUE_NEW(Number, job->Position));
+  result_printer_job.Set(Napi::String::New(env, "position"),
+                         Napi::Number::New(env, job->Position));
   // DWORD                StartTime;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("startTime"),
-           V8_VALUE_NEW(Number, job->StartTime));
+  result_printer_job.Set(Napi::String::New(env, "startTime"),
+                         Napi::Number::New(env, job->StartTime));
   // DWORD                UntilTime;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("untilTime"),
-           V8_VALUE_NEW(Number, job->UntilTime));
+  result_printer_job.Set(Napi::String::New(env, "untilTime"),
+                         Napi::Number::New(env, job->UntilTime));
   // DWORD                TotalPages;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("totalPages"),
-           V8_VALUE_NEW(Number, job->TotalPages));
+  result_printer_job.Set(Napi::String::New(env, "totalPages"),
+                         Napi::Number::New(env, job->TotalPages));
   // SYSTEMTIME           Submitted;
   // DWORD                Time;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("time"),
-           V8_VALUE_NEW(Number, job->Time));
+  result_printer_job.Set(Napi::String::New(env, "time"),
+                         Napi::Number::New(env, job->Time));
   // DWORD                PagesPrinted;
-  Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("pagesPrinted"),
-           V8_VALUE_NEW(Number, job->PagesPrinted));
+  result_printer_job.Set(Napi::String::New(env, "pagesPrinted"),
+                         Napi::Number::New(env, job->PagesPrinted));
 }
 
 /**
@@ -307,9 +308,9 @@ std::string getLastErrorCodeAndMessage() {
 
 std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
                                  const DWORD &iTotalJobs,
-                                 v8::Local<v8::Object> result_printer_jobs,
+                                 Napi::Object result_printer_jobs,
                                  PrinterHandle &iPrinterHandle) {
-  MY_NODE_MODULE_ISOLATE_DECL
+  Napi::Env env = result_printer_jobs.Env();
   DWORD bytes_needed = 0, totalJobs = 0;
   BOOL bError = EnumJobsW(*iPrinterHandle, 0, iTotalJobs, 2, NULL, bytes_needed,
                           &bytes_needed, &totalJobs);
@@ -317,10 +318,10 @@ std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
   if (!jobs) {
     std::string error_str("Error on allocating memory for jobs: ");
     error_str += getLastErrorCodeAndMessage();
-    v8::Local<v8::Object> result_printer_job = V8_VALUE_NEW_DEFAULT(Object);
-    Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("error"),
-             V8_STRING_NEW_UTF8(error_str.c_str()));
-    Nan::Set(result_printer_jobs, 0, result_printer_job);
+    Napi::Object result_printer_job = Napi::Object::New(env);
+    result_printer_job.Set(Napi::String::New(env, "error"),
+                           Napi::String::New(env, error_str.c_str()));
+    result_printer_jobs.Set(0, result_printer_job);
     return std::string("");
   }
   DWORD dummy_bytes = 0;
@@ -329,103 +330,104 @@ std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
   if (!bError) {
     std::string error_str("Error on EnumJobsW: ");
     error_str += getLastErrorCodeAndMessage();
-    v8::Local<v8::Object> result_printer_job = V8_VALUE_NEW_DEFAULT(Object);
-    Nan::Set(result_printer_job, V8_STRING_NEW_UTF8("error"),
-             V8_STRING_NEW_UTF8(error_str.c_str()));
-    Nan::Set(result_printer_jobs, 0, result_printer_job);
+    Napi::Object result_printer_job = Napi::Object::New(env);
+    result_printer_job.Set(Napi::String::New(env, "error"),
+                           Napi::String::New(env, error_str.c_str()));
+    result_printer_jobs.Set(0, result_printer_job);
     return std::string("");
   }
   JOB_INFO_2W *job = jobs.get();
   for (DWORD i = 0; i < totalJobs; ++i, ++job) {
-    v8::Local<v8::Object> result_printer_job = V8_VALUE_NEW_DEFAULT(Object);
+    Napi::Object result_printer_job = Napi::Object::New(env);
     parseJobObject(job, result_printer_job);
-    Nan::Set(result_printer_jobs, i, result_printer_job);
+    result_printer_jobs.Set(i, result_printer_job);
   }
   return std::string("");
 }
 
 std::string parsePrinterInfo(const PRINTER_INFO_2W *printer,
-                             v8::Local<v8::Object> result_printer,
+                             Napi::Object result_printer,
                              PrinterHandle &iPrinterHandle) {
-  MY_NODE_MODULE_ISOLATE_DECL
-#define ADD_V8_STRING_PROPERTY(name, key)                                      \
-  if ((printer->##key != NULL) && (*printer->##key != L'\0')) {                \
-    Nan::Set(result_printer, V8_STRING_NEW_UTF8(#name),                        \
-             V8_STRING_NEW_2BYTES((uint16_t *)printer->##key));                \
-  }
+  Napi::Env env = result_printer.Env();
+  auto addPrinterStringProperty = [&](const char *name, LPCWSTR value) {
+    if ((value != NULL) && (*value != L'\0')) {
+      result_printer.Set(
+          name,
+          Napi::String::New(env, reinterpret_cast<const char16_t *>(value)));
+    }
+  };
   // LPTSTR               pPrinterName;
-  ADD_V8_STRING_PROPERTY(name, pPrinterName)
+  addPrinterStringProperty("name", printer->pPrinterName);
   // LPTSTR               pServerName;
-  ADD_V8_STRING_PROPERTY(serverName, pServerName)
+  addPrinterStringProperty("serverName", printer->pServerName);
   // LPTSTR               pShareName;
-  ADD_V8_STRING_PROPERTY(shareName, pShareName)
+  addPrinterStringProperty("shareName", printer->pShareName);
   // LPTSTR               pPortName;
-  ADD_V8_STRING_PROPERTY(portName, pPortName)
+  addPrinterStringProperty("portName", printer->pPortName);
   // LPTSTR               pDriverName;
-  ADD_V8_STRING_PROPERTY(driverName, pDriverName)
+  addPrinterStringProperty("driverName", printer->pDriverName);
   // LPTSTR               pComment;
-  ADD_V8_STRING_PROPERTY(comment, pComment)
+  addPrinterStringProperty("comment", printer->pComment);
   // LPTSTR               pLocation;
-  ADD_V8_STRING_PROPERTY(location, pLocation)
+  addPrinterStringProperty("location", printer->pLocation);
   // LPTSTR               pSepFile;
-  ADD_V8_STRING_PROPERTY(sepFile, pSepFile)
+  addPrinterStringProperty("sepFile", printer->pSepFile);
   // LPTSTR               pPrintProcessor;
-  ADD_V8_STRING_PROPERTY(printProcessor, pPrintProcessor)
+  addPrinterStringProperty("printProcessor", printer->pPrintProcessor);
   // LPTSTR               pDatatype;
-  ADD_V8_STRING_PROPERTY(datatype, pDatatype)
+  addPrinterStringProperty("datatype", printer->pDatatype);
   // LPTSTR               pParameters;
-  ADD_V8_STRING_PROPERTY(parameters, pParameters)
-#undef ADD_V8_STRING_PROPERTY
+  addPrinterStringProperty("parameters", printer->pParameters);
   // DWORD                Status;
   //  statuses from:
   //  http://msdn.microsoft.com/en-gb/library/windows/desktop/dd162845(v=vs.85).aspx
-  v8::Local<v8::Array> result_printer_status = V8_VALUE_NEW_DEFAULT(Array);
+  Napi::Array result_printer_status = Napi::Array::New(env);
   int i_status = 0;
   for (StatusMapType::const_iterator itStatus = getStatusMap().begin();
        itStatus != getStatusMap().end(); ++itStatus) {
     if (printer->Status & itStatus->second) {
-      Nan::Set(result_printer_status, i_status,
-               V8_STRING_NEW_UTF8(itStatus->first.c_str()));
+      result_printer_status.Set(
+          i_status, Napi::String::New(env, itStatus->first.c_str()));
       ++i_status;
     }
   }
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("status"), result_printer_status);
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("statusNumber"),
-           V8_VALUE_NEW(Number, printer->Status));
+  result_printer.Set(Napi::String::New(env, "status"), result_printer_status);
+  result_printer.Set(Napi::String::New(env, "statusNumber"),
+                     Napi::Number::New(env, printer->Status));
   // DWORD                Attributes;
-  v8::Local<v8::Array> result_printer_attributes = V8_VALUE_NEW_DEFAULT(Array);
+  Napi::Array result_printer_attributes = Napi::Array::New(env);
   int i_attribute = 0;
   for (StatusMapType::const_iterator itAttribute = getAttributeMap().begin();
        itAttribute != getAttributeMap().end(); ++itAttribute) {
     if (printer->Attributes & itAttribute->second) {
-      Nan::Set(result_printer_attributes, i_attribute,
-               V8_STRING_NEW_UTF8(itAttribute->first.c_str()));
+      result_printer_attributes.Set(
+          i_attribute, Napi::String::New(env, itAttribute->first.c_str()));
       ++i_attribute;
     }
   }
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("attributes"),
-           result_printer_attributes);
+  result_printer.Set(Napi::String::New(env, "attributes"),
+                     result_printer_attributes);
   // DWORD                Priority;
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("priority"),
-           V8_VALUE_NEW(Number, printer->Priority));
+  result_printer.Set(Napi::String::New(env, "priority"),
+                     Napi::Number::New(env, printer->Priority));
   // DWORD                DefaultPriority;
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("defaultPriority"),
-           V8_VALUE_NEW(Number, printer->DefaultPriority));
+  result_printer.Set(Napi::String::New(env, "defaultPriority"),
+                     Napi::Number::New(env, printer->DefaultPriority));
   // DWORD                cJobs;
-  // Nan::Set(result_printer, V8_STRING_NEW_UTF8("jobs"), V8_VALUE_NEW(Number,
-  // printer->cJobs)); DWORD                AveragePPM;
-  Nan::Set(result_printer, V8_STRING_NEW_UTF8("averagePPM"),
-           V8_VALUE_NEW(Number, printer->AveragePPM));
+  // result_printer.Set(Napi::String::New(env, "jobs"), Napi::Number::New(env,
+  // // printer->cJobs)); DWORD                AveragePPM;
+  result_printer.Set(Napi::String::New(env, "averagePPM"),
+                     Napi::Number::New(env, printer->AveragePPM));
 
   // DWORD                StartTime;
   if (printer->StartTime > 0) {
-    Nan::Set(result_printer, V8_STRING_NEW_UTF8("startTime"),
-             V8_VALUE_NEW(Number, printer->StartTime));
+    result_printer.Set(Napi::String::New(env, "startTime"),
+                       Napi::Number::New(env, printer->StartTime));
   }
   // DWORD                UntilTime;
   if (printer->UntilTime > 0) {
-    Nan::Set(result_printer, V8_STRING_NEW_UTF8("untilTime"),
-             V8_VALUE_NEW(Number, printer->UntilTime));
+    result_printer.Set(Napi::String::New(env, "untilTime"),
+                       Napi::Number::New(env, printer->UntilTime));
   }
 
   // TODO: to finish to extract all data
@@ -433,8 +435,7 @@ std::string parsePrinterInfo(const PRINTER_INFO_2W *printer,
   // PSECURITY_DESCRIPTOR pSecurityDescriptor;
 
   if (printer->cJobs > 0) {
-    v8::Local<v8::Array> result_printer_jobs =
-        V8_VALUE_NEW(Array, printer->cJobs);
+    Napi::Array result_printer_jobs = Napi::Array::New(env, printer->cJobs);
     // get jobs
     std::string error_str =
         retrieveAndParseJobs(printer->pPrinterName, printer->cJobs,
@@ -442,14 +443,14 @@ std::string parsePrinterInfo(const PRINTER_INFO_2W *printer,
     if (!error_str.empty()) {
       return error_str;
     }
-    Nan::Set(result_printer, V8_STRING_NEW_UTF8("jobs"), result_printer_jobs);
+    result_printer.Set(Napi::String::New(env, "jobs"), result_printer_jobs);
   }
   return "";
 }
 } // namespace
 
-MY_NODE_MODULE_CALLBACK(getPrinters) {
-  MY_NODE_MODULE_HANDLESCOPE;
+Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
   DWORD printers_size = 0;
   DWORD printers_size_bytes = 0, dummyBytes = 0;
   DWORD Level = 2;
@@ -462,7 +463,9 @@ MY_NODE_MODULE_CALLBACK(getPrinters) {
   // allocate the required memmory
   MemValue<PRINTER_INFO_2W> printers(printers_size_bytes);
   if (!printers) {
-    RETURN_EXCEPTION_STR("Error on allocating memory for printers");
+    Napi::Error::New(env, "Error on allocating memory for printers")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
   bError = EnumPrintersW(flags, NULL, 2, (LPBYTE)(printers.get()),
@@ -470,166 +473,232 @@ MY_NODE_MODULE_CALLBACK(getPrinters) {
   if (!bError) {
     std::string error_str("Error on EnumPrinters: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  v8::Local<v8::Array> result = V8_VALUE_NEW(Array, printers_size);
+  Napi::Array result = Napi::Array::New(env, printers_size);
   // http://msdn.microsoft.com/en-gb/library/windows/desktop/dd162845(v=vs.85).aspx
   PRINTER_INFO_2W *printer = printers.get();
   DWORD i = 0;
   for (; i < printers_size; ++i, ++printer) {
-    v8::Local<v8::Object> result_printer = V8_VALUE_NEW_DEFAULT(Object);
+    Napi::Object result_printer = Napi::Object::New(env);
     PrinterHandle printerHandle((LPWSTR)(printer->pPrinterName));
     std::string error_str =
         parsePrinterInfo(printer, result_printer, printerHandle);
     if (!error_str.empty()) {
-      RETURN_EXCEPTION_STR(error_str.c_str());
+      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+      return env.Undefined();
     }
-    Nan::Set(result, i, result_printer);
+    result.Set(i, result_printer);
   }
-  MY_NODE_MODULE_RETURN_VALUE(result);
+  return result;
 }
 
-MY_NODE_MODULE_CALLBACK(getDefaultPrinterName) {
-  MY_NODE_MODULE_HANDLESCOPE;
+Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
   // size in chars of the printer name:
   // https://msdn.microsoft.com/en-us/library/windows/desktop/dd144876(v=vs.85).aspx
   DWORD cSize = 0;
   GetDefaultPrinterW(NULL, &cSize);
 
   if (cSize == 0) {
-    MY_NODE_MODULE_RETURN_VALUE(V8_STRING_NEW_UTF8(""));
+    return Napi::String::New(env, "");
   }
 
   MemValue<uint16_t> bPrinterName(cSize * sizeof(uint16_t));
   BOOL res = GetDefaultPrinterW((LPWSTR)(bPrinterName.get()), &cSize);
 
   if (!res) {
-    MY_NODE_MODULE_RETURN_VALUE(V8_STRING_NEW_UTF8(""));
+    return Napi::String::New(env, "");
   }
 
-  MY_NODE_MODULE_RETURN_VALUE(
-      V8_STRING_NEW_2BYTES((uint16_t *)bPrinterName.get()));
+  return Napi::String::New(
+      env, reinterpret_cast<const char16_t *>((uint16_t *)bPrinterName.get()));
 }
 
-MY_NODE_MODULE_CALLBACK(getPrinter) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  REQUIRE_ARGUMENTS(iArgs, 1);
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 0, printername);
+Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  if (iArgs.Length() < 1) {
+    Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  std::u16string printername;
+  if (!iArgs[0].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  printername = iArgs[0].As<Napi::String>().Utf16Value();
 
   // Open a handle to the printer.
-  PrinterHandle printerHandle((LPWSTR)(*printername));
+  PrinterHandle printerHandle(
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   if (!printerHandle) {
     std::string error_str("error on PrinterHandle: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   DWORD printers_size_bytes = 0, dummyBytes = 0;
   GetPrinterW(*printerHandle, 2, NULL, printers_size_bytes,
               &printers_size_bytes);
   MemValue<PRINTER_INFO_2W> printer(printers_size_bytes);
   if (!printer) {
-    RETURN_EXCEPTION_STR("Error on allocating memory for printers");
+    Napi::Error::New(env, "Error on allocating memory for printers")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   BOOL bOK = GetPrinterW(*printerHandle, 2, (LPBYTE)(printer.get()),
                          printers_size_bytes, &printers_size_bytes);
   if (!bOK) {
     std::string error_str("Error on GetPrinter: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  v8::Local<v8::Object> result_printer = V8_VALUE_NEW_DEFAULT(Object);
+  Napi::Object result_printer = Napi::Object::New(env);
   std::string error_str =
       parsePrinterInfo(printer.get(), result_printer, printerHandle);
   if (!error_str.empty()) {
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
-  MY_NODE_MODULE_RETURN_VALUE(result_printer);
+  return result_printer;
 }
 
-MY_NODE_MODULE_CALLBACK(getPrinterDriverOptions) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  RETURN_EXCEPTION_STR("not supported on windows");
+Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  Napi::Error::New(env, "not supported on windows")
+      .ThrowAsJavaScriptException();
+  return env.Undefined();
 }
 
-MY_NODE_MODULE_CALLBACK(getJob) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  REQUIRE_ARGUMENTS(iArgs, 2);
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 0, printername);
-  REQUIRE_ARGUMENT_INTEGER(iArgs, 1, jobId);
+Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  if (iArgs.Length() < 2) {
+    Napi::Error::New(env, "Expected 2 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  std::u16string printername;
+  if (!iArgs[0].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  printername = iArgs[0].As<Napi::String>().Utf16Value();
+  int jobId;
+  if (!iArgs[1].IsNumber()) {
+    Napi::Error::New(env, "Job id must be a number")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  jobId = iArgs[1].As<Napi::Number>().Int32Value();
   if (jobId < 0) {
-    RETURN_EXCEPTION_STR("Wrong job number");
+    Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   // Open a handle to the printer.
-  PrinterHandle printerHandle((LPWSTR)(*printername));
+  PrinterHandle printerHandle(
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   if (!printerHandle) {
     std::string error_str("error on PrinterHandle: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   DWORD size_bytes = 0, dummyBytes = 0;
   GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2, NULL, size_bytes,
           &size_bytes);
   MemValue<JOB_INFO_2W> job(size_bytes);
   if (!job) {
-    RETURN_EXCEPTION_STR("Error on allocating memory for printers");
+    Napi::Error::New(env, "Error on allocating memory for printers")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   BOOL bOK = GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2,
                      (LPBYTE)job.get(), size_bytes, &dummyBytes);
   if (!bOK) {
     std::string error_str("Error on GetJob. Wrong job id or it was deleted: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  v8::Local<v8::Object> result_printer_job = V8_VALUE_NEW_DEFAULT(Object);
+  Napi::Object result_printer_job = Napi::Object::New(env);
   parseJobObject(job.get(), result_printer_job);
-  MY_NODE_MODULE_RETURN_VALUE(result_printer_job);
+  return result_printer_job;
 }
 
-MY_NODE_MODULE_CALLBACK(setJob) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  REQUIRE_ARGUMENTS(iArgs, 3);
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 0, printername);
-  REQUIRE_ARGUMENT_INTEGER(iArgs, 1, jobId);
-  REQUIRE_ARGUMENT_STRING(iArgs, 2, jobCommandV8);
-  if (jobId < 0) {
-    RETURN_EXCEPTION_STR("Wrong job number");
+Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  if (iArgs.Length() < 3) {
+    Napi::Error::New(env, "Expected 3 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  std::string jobCommandStr(*jobCommandV8);
+  std::u16string printername;
+  if (!iArgs[0].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  printername = iArgs[0].As<Napi::String>().Utf16Value();
+  int jobId;
+  if (!iArgs[1].IsNumber()) {
+    Napi::Error::New(env, "Job id must be a number")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  jobId = iArgs[1].As<Napi::Number>().Int32Value();
+  std::string jobCommandV8;
+  if (!iArgs[2].IsString()) {
+    Napi::Error::New(env, "Job command must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  jobCommandV8 = iArgs[2].As<Napi::String>().Utf8Value();
+  if (jobId < 0) {
+    Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  std::string jobCommandStr(jobCommandV8);
   StatusMapType::const_iterator itJobCommand =
       getJobCommandMap().find(jobCommandStr);
   if (itJobCommand == getJobCommandMap().end()) {
-    RETURN_EXCEPTION_STR("wrong job command. use getSupportedJobCommands to "
-                         "see the possible commands");
+    Napi::Error::New(env, "wrong job command. use getSupportedJobCommands to "
+                          "see the possible commands")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   DWORD jobCommand = itJobCommand->second;
   // Open a handle to the printer.
-  PrinterHandle printerHandle((LPWSTR)(*printername));
+  PrinterHandle printerHandle(
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   if (!printerHandle) {
     std::string error_str("error on PrinterHandle: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   // TODO: add the possibility to set job properties
   // http://msdn.microsoft.com/en-us/library/windows/desktop/dd162978(v=vs.85).aspx
   BOOL ok = SetJobW(*printerHandle, (DWORD)jobId, 0, NULL, jobCommand);
-  MY_NODE_MODULE_RETURN_VALUE(V8_VALUE_NEW(Boolean, ok == TRUE));
+  return Napi::Boolean::New(env, ok == TRUE);
 }
 
-MY_NODE_MODULE_CALLBACK(getSupportedJobCommands) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  v8::Local<v8::Array> result = V8_VALUE_NEW_DEFAULT(Array);
+Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  Napi::Array result = Napi::Array::New(env);
   int i = 0;
   for (StatusMapType::const_iterator itJob = getJobCommandMap().begin();
        itJob != getJobCommandMap().end(); ++itJob) {
-    Nan::Set(result, i++, V8_STRING_NEW_UTF8(itJob->first.c_str()));
+    result.Set(i++, Napi::String::New(env, itJob->first.c_str()));
   }
-  MY_NODE_MODULE_RETURN_VALUE(result);
+  return result;
 }
 
-MY_NODE_MODULE_CALLBACK(getSupportedPrintFormats) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  v8::Local<v8::Array> result = V8_VALUE_NEW_DEFAULT(Array);
+Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  Napi::Array result = Napi::Array::New(env);
   int format_i = 0;
 
   LPTSTR name = NULL;
@@ -648,7 +717,8 @@ MY_NODE_MODULE_CALLBACK(getSupportedPrintFormats) {
   if (!isOK) {
     std::string error_str("error on EnumPrintProcessorsW: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
   _PRINTPROCESSOR_INFO_1W *pProcessor = processors.get();
@@ -667,42 +737,68 @@ MY_NODE_MODULE_CALLBACK(getSupportedPrintFormats) {
     if (!isOK) {
       std::string error_str("error on EnumPrintProcessorDatatypesW: ");
       error_str += getLastErrorCodeAndMessage();
-      RETURN_EXCEPTION_STR(error_str.c_str());
+      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+      return env.Undefined();
     }
 
     _DATATYPES_INFO_1W *pDataType = dataTypes.get();
     for (DWORD j = 0; j < dataTypesNum; ++j, ++pDataType) {
-      Nan::Set(result, format_i++,
-               V8_STRING_NEW_2BYTES((uint16_t *)(pDataType->pName)));
+      result.Set(format_i++,
+                 Napi::String::New(env, reinterpret_cast<const char16_t *>(
+                                            (uint16_t *))(pDataType->pName)));
     }
   }
 
-  MY_NODE_MODULE_RETURN_VALUE(result);
+  return result;
 }
 
-MY_NODE_MODULE_CALLBACK(PrintDirect) {
-  MY_NODE_MODULE_HANDLESCOPE;
+Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
   // TODO: to move in an unique place win and posix input parameters processing
-  REQUIRE_ARGUMENTS(iArgs, 5);
-
-  // can be string or buffer
-  if (iArgs.Length() <= 0) {
-    RETURN_EXCEPTION_STR("Argument 0 missing");
+  if (iArgs.Length() < 4) {
+    Napi::Error::New(env, "Expected 4 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
   std::string data;
-  v8::Local<v8::Value> arg0(iArgs[0]);
-  if (!getStringOrBufferFromV8Value(arg0, data)) {
-    RETURN_EXCEPTION_STR("Argument 0 must be a string or Buffer");
+  Napi::Value arg0(iArgs[0]);
+  if (arg0.IsString()) {
+    data = arg0.As<Napi::String>().Utf8Value();
+  } else if (arg0.IsBuffer()) {
+    Napi::Buffer<char> buffer = arg0.As<Napi::Buffer<char>>();
+    data.assign(buffer.Data(), buffer.Length());
+  } else {
+    Napi::Error::New(env, "Data must be a string or Buffer")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 1, printername);
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 2, docname);
-  REQUIRE_ARGUMENT_STRINGW(iArgs, 3, type);
+  std::u16string printername;
+  if (!iArgs[1].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  printername = iArgs[1].As<Napi::String>().Utf16Value();
+  std::u16string docname;
+  if (!iArgs[2].IsString()) {
+    Napi::Error::New(env, "Document name must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  docname = iArgs[2].As<Napi::String>().Utf16Value();
+  std::u16string type;
+  if (!iArgs[3].IsString()) {
+    Napi::Error::New(env, "Type must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  type = iArgs[3].As<Napi::String>().Utf16Value();
 
   BOOL bStatus = true;
   // Open a handle to the printer.
-  PrinterHandle printerHandle((LPWSTR)(*printername));
+  PrinterHandle printerHandle(
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   DOC_INFO_1W DocInfo;
   DWORD dwJob = 0L;
   DWORD dwBytesWritten = 0L;
@@ -710,13 +806,16 @@ MY_NODE_MODULE_CALLBACK(PrintDirect) {
   if (!printerHandle) {
     std::string error_str("error on PrinterHandle: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
 
   // Fill in the structure with info about this "document."
-  DocInfo.pDocName = (LPWSTR)(*docname);
+  DocInfo.pDocName =
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(docname.c_str()));
   DocInfo.pOutputFile = NULL;
-  DocInfo.pDatatype = (LPWSTR)(*type);
+  DocInfo.pDatatype =
+      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(type.c_str()));
 
   // Inform the spooler the document is beginning.
   dwJob = StartDocPrinterW(*printerHandle, 1, (LPBYTE)&DocInfo);
@@ -732,23 +831,28 @@ MY_NODE_MODULE_CALLBACK(PrintDirect) {
     } else {
       std::string error_str("StartPagePrinter error: ");
       error_str += getLastErrorCodeAndMessage();
-      RETURN_EXCEPTION_STR(error_str.c_str());
+      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+      return env.Undefined();
     }
     // Inform the spooler that the document is ending.
     EndDocPrinter(*printerHandle);
   } else {
     std::string error_str("StartDocPrinterW error: ");
     error_str += getLastErrorCodeAndMessage();
-    RETURN_EXCEPTION_STR(error_str.c_str());
+    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
   // Check to see if correct number of bytes were written.
   if (dwBytesWritten != data.size()) {
-    RETURN_EXCEPTION_STR("not sent all bytes");
+    Napi::Error::New(env, "not sent all bytes").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  MY_NODE_MODULE_RETURN_VALUE(V8_VALUE_NEW(Number, dwJob));
+  return Napi::Number::New(env, dwJob);
 }
 
-MY_NODE_MODULE_CALLBACK(PrintFile) {
-  MY_NODE_MODULE_HANDLESCOPE;
-  RETURN_EXCEPTION_STR("Not yet implemented on Windows");
+Napi::Value PrintFile(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  Napi::Error::New(env, "Not yet implemented on Windows")
+      .ThrowAsJavaScriptException();
+  return env.Undefined();
 }

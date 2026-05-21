@@ -24,7 +24,13 @@
         'src/node_printer_win.cc'
       ],
       'include_dirs' : [
-        "<!(node -e \"require('nan')\")"
+        "<!@(node -p \"require('node-addon-api').include\")"
+      ],
+      'dependencies': [
+        "<!(node -p \"require('node-addon-api').gyp\")"
+      ],
+      'defines': [
+        'NODE_ADDON_API_DISABLE_CPP_EXCEPTIONS'
       ],
       'cflags_cc+': [
         "-Wno-deprecated-declarations"
