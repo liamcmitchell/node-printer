@@ -27,6 +27,7 @@
   "scripts": {
     "install": "node-gyp rebuild",
     "rebuild": "node-gyp rebuild",
+    "test": "node --test test/printer.test.js",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt --write && clang-format -i -style=file src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp",
@@ -37,6 +38,7 @@
   },
   "devDependencies": {
     "clang-format-node": "^3.0.1",
+    "ipp": "^1.1.0",
     "node-abi": "^4.31.0",
     "node-gyp": "^12.3.0",
     "oxfmt": "^0.44.0",
