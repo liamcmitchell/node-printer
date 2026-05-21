@@ -25,6 +25,7 @@ fs.readFile(filename, function (err, data) {
   console.log("data type is: " + typeof data + ", is buffer: " + Buffer.isBuffer(data));
   printer.printDirect({
     data: data,
+    printer: printername,
     type: "PDF",
     success: function (id) {
       console.log("printed with id " + id);
