@@ -1,53 +1,34 @@
 {
-  "name": "@timokunze/node-printer",
+  "name": "node-printer",
   "description": "Node.js printer bindings",
   "version": "0.6.30",
-  "homepage": "https://github.com/TimoKunze/node-printer",
-  "author": {
-    "name": "Ion Lupascu",
-    "url": "http://program-support.co.uk/",
-    "email": "ionlupascu@gmail.com"
-  },
+  "homepage": "https://github.com/liamcmitchell/node-printer",
   "contributors": [
+    "Liam Mitchell <liam.mitchell@siemens.com>",
+    "Ion Lupascu <ionlupascu@gmail.com>",
     "Timo Kunze <tkunze@compeso.com",
     "Thiago Lugli <thiagoelg@gmail.com>",
     "Eko Eryanto <ekoeryanto@gmail.com>"
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/TimoKunze/node-printer.git"
+    "url": "git://github.com/liamcmitchell/node-printer.git"
   },
   "engines": {
     "node": ">= 20.0.0"
   },
   "scripts": {
-    "install": "node-gyp rebuild || prebuild-install",
-    "apply-patches": "patch-package",
-    "prebuild-all": "prebuild --all --force --strip --verbose --openssl_fips=X",
-    "prebuild": "prebuild",
+    "install": "node-gyp rebuild",
     "rebuild": "node-gyp rebuild"
   },
-  "binary": {
-    "module_name": "node_printer",
-    "module_path": "./lib/",
-    "host": "https://github.com/TimoKunze/node-printer/releases/",
-    "remote_path": "v{version}"
-  },
-  "licenses": [
-    {
-      "type": "BSD"
-    }
-  ],
+  "license": "MIT",
   "main": "./lib/printer",
   "types": "types/index.d.ts",
   "devDependencies": {
     "node-gyp": "^12.3.0",
-    "prebuild": "git+https://github.com/TimoKunze/prebuild.git",
-    "node-abi": "^4.31.0",
-    "patch-package": "^8.0.1"
+    "node-abi": "^4.31.0"
   },
   "dependencies": {
-    "nan": "^2.26.2",
-    "prebuild-install": "^7.1.3"
+    "nan": "^2.26.2"
   }
 }

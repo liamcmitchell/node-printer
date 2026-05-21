@@ -7,5 +7,3 @@ node_modules
 *.node
 *.swp
 *.log
-prebuilds
-.prebuildrc

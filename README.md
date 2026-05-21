@@ -1,4 +1,4 @@
-Node Printer Prebuild
+Node Printer
 ============
 Native bind printers on POSIX and Windows OS from Node.js, electron and node-webkit.
 
@@ -22,22 +22,20 @@ Native bind printers on POSIX and Windows OS from Node.js, electron and node-web
 
 ### How to install:
 ```
-npm install @timokunze/node-printer
+npm install github:liamcmitchell/node-printer
 ```
 
 ### How to use:
 
-See [examples](https://github.com/TimoKunze/node-printer/tree/main/examples)
-
-### Author(s):
-
-* Ion Lupascu, ionlupascu@gmail.com
+See [examples](examples)
 
 ### Contibutors:
 
+* Ion Lupascu, ionlupascu@gmail.com
 * Timo Kunze, @timokunze
 * Thiago Lugli, @thiagoelg
 * Eko Eryanto, @ekoeryanto
+* Liam Mitchell, liam.mitchell@siemens.com
 
 Feel free to download, test and propose new futures
 
