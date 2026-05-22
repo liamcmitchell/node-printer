@@ -159,8 +159,29 @@ export class MockIppPrinter extends EventEmitter {
       };
 
       const timeout = setTimeout(() => {
+        const jobs = this.listJobs({ includeData: true }).map((job) => ({
+          id: job.id,
+          name: job.name,
+          state: job.state,
+          stateReason: job.stateReason,
+          bytes: job.bytes,
+          createdAt: job.createdAt,
+          processingAt: job.processingAt,
+          completedAt: job.completedAt,
+          dataUtf8Preview:
+            typeof job.dataUtf8 === "string" ? job.dataUtf8.slice(0, 120) : undefined,
+        }));
+        const snapshot = {
+          timeoutMs,
+          completionTimeoutMs: this.completionTimeoutMs,
+          jobCount: jobs.length,
+          jobs,
+        };
         cleanup();
-        reject(new Error(`Timed out after ${timeoutMs}ms`));
+        console.error("[MockIppPrinter] waitForJob timeout", snapshot);
+        reject(
+          new Error(`Timed out after ${timeoutMs}ms. Mock state: ${JSON.stringify(snapshot)}`),
+        );
       }, timeoutMs);
 
       const cleanup = () => {

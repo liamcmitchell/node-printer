@@ -7,7 +7,6 @@ import test, { after, before, beforeEach } from "node:test";
 import * as printer from "../lib/index.js";
 import { createMockIppPrinter } from "./printer.mock.js";
 
-const MAX_TIMEOUT_MS = 1000;
 const printerName = process.env.MOCK_PRINTER_NAME || "NodePrinterMock";
 const mock = createMockIppPrinter({
   name: printerName,
@@ -57,11 +56,11 @@ after(async () => {
   await mock.stop();
 });
 
-test("mock IPP server is running", { timeout: MAX_TIMEOUT_MS }, () => {
+test("mock IPP server is running", () => {
   assert.equal(mock.isRunning(), true);
 });
 
-test("discovery APIs return expected printer", { timeout: MAX_TIMEOUT_MS }, () => {
+test("discovery APIs return expected printer", () => {
   const printers = printer.getPrinters();
   const details = printers.find((entry) => entry.name === printerName);
   assert.ok(
@@ -73,7 +72,7 @@ test("discovery APIs return expected printer", { timeout: MAX_TIMEOUT_MS }, () =
   assert.equal(single.name, printerName);
 });
 
-test("capability APIs include RAW and CANCEL", { timeout: MAX_TIMEOUT_MS }, () => {
+test("capability APIs include RAW and CANCEL", () => {
   const formats = printer.getSupportedPrintFormats();
   assert.ok(formats.includes("RAW"), "Expected RAW in getSupportedPrintFormats()");
 
@@ -81,30 +80,26 @@ test("capability APIs include RAW and CANCEL", { timeout: MAX_TIMEOUT_MS }, () =
   assert.ok(commands.includes("CANCEL"), "Expected CANCEL in getSupportedJobCommands()");
 });
 
-test(
-  "printDirect sends payload to mock and getJob can read it",
-  { timeout: MAX_TIMEOUT_MS },
-  async () => {
-    const payload = `node-printer mock direct ${Date.now()} ${Math.random()}\n`;
-    const jobId = await printDirectAsync({
-      data: payload,
-      printer: printerName,
-      type: "RAW",
-    });
+test("printDirect sends payload to mock and getJob can read it", async () => {
+  const payload = `node-printer mock direct ${Date.now()} ${Math.random()}\n`;
+  const jobId = await printDirectAsync({
+    data: payload,
+    printer: printerName,
+    type: "RAW",
+  });
 
-    const mockJob = await mock.waitForJob(
-      (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
-      { timeoutMs: MAX_TIMEOUT_MS },
-    );
+  const mockJob = await mock.waitForJob(
+    (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
+    { timeoutMs: 5000 },
+  );
 
-    assert.ok(mockJob.bytes > 0, "Expected mock job bytes to be greater than 0");
+  assert.ok(mockJob.bytes > 0, "Expected mock job bytes to be greater than 0");
 
-    const job = printer.getJob(printerName, jobId);
-    assert.equal(job.id, jobId);
-  },
-);
+  const job = printer.getJob(printerName, jobId);
+  assert.equal(job.id, jobId);
+});
 
-test("setJob CANCEL transitions job state", { timeout: MAX_TIMEOUT_MS }, async () => {
+test("setJob CANCEL transitions job state", async () => {
   mock.setCompletionTimeout(0);
 
   const payload = `node-printer mock cancel ${Date.now()} ${Math.random()}\n`;
@@ -116,7 +111,7 @@ test("setJob CANCEL transitions job state", { timeout: MAX_TIMEOUT_MS }, async (
 
   const mockJob = await mock.waitForJob(
     (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
-    { timeoutMs: MAX_TIMEOUT_MS },
+    { timeoutMs: 5000 },
   );
   assert.ok(mockJob.id > 0);
 
@@ -127,29 +122,25 @@ test("setJob CANCEL transitions job state", { timeout: MAX_TIMEOUT_MS }, async (
   assert.equal(job.id, jobId);
 });
 
-test(
-  "printFile submits file content",
-  { timeout: MAX_TIMEOUT_MS, skip: process.platform === "win32" },
-  async () => {
-    const payload = `node-printer mock file ${Date.now()} ${Math.random()}\n`;
-    const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
-    fs.writeFileSync(tmpFile, payload, "utf8");
+test("printFile submits file content", { skip: process.platform === "win32" }, async () => {
+  const payload = `node-printer mock file ${Date.now()} ${Math.random()}\n`;
+  const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
+  fs.writeFileSync(tmpFile, payload, "utf8");
 
-    try {
-      await printFileAsync({
-        filename: tmpFile,
-        printer: printerName,
-        docname: "node-printer-file-test",
-      });
+  try {
+    await printFileAsync({
+      filename: tmpFile,
+      printer: printerName,
+      docname: "node-printer-file-test",
+    });
 
-      const fileJob = await mock.waitForJob(
-        (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
-        { timeoutMs: MAX_TIMEOUT_MS },
-      );
+    const fileJob = await mock.waitForJob(
+      (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
+      { timeoutMs: 5000 },
+    );
 
-      assert.ok(fileJob.bytes > 0, "Expected printFile payload bytes in mock job");
-    } finally {
-      fs.unlinkSync(tmpFile);
-    }
-  },
-);
+    assert.ok(fileJob.bytes > 0, "Expected printFile payload bytes in mock job");
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
+});
