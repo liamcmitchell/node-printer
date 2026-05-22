@@ -1,35 +1,61 @@
 # Node Printer
 
-Native bind printers on POSIX and Windows OS from Node.js, electron and node-webkit.
-
-### Features:
-
-- no dependecies;
-- native method wrappers from Windows and POSIX (which uses [CUPS 1.4/macOS 14](http://cups.org/)) APIs;
-- compatible with node >= v20;
-- `getPrinters()` to enumerate all installed printers with current jobs and statuses;
-- `getPrinter(printerName)` to get a specific/default printer info with current jobs and statuses;
-- `getPrinterDriverOptions(printerName)` ([POSIX](http://en.wikipedia.org/wiki/POSIX) only) to get a specific/default printer driver options such as supported paper size and other info
-- `getSelectedPaperSize(printerName)` ([POSIX](http://en.wikipedia.org/wiki/POSIX) only) to get a specific/default printer default paper size from its driver options
-- `getDefaultPrinterName()` return the default printer name;
-- `printDirect(options)` to send a job to a specific/default printer, now supports [CUPS options](http://www.cups.org/documentation.php/options.html) passed in the form of a JS object (see `cancelJob.js` example). To print a PDF from windows it is possible by using [node-pdfium module](https://github.com/tojocky/node-pdfium) to convert a PDF format into EMF and after to send to printer as EMF;
-- `printFile(options)` ([POSIX](http://en.wikipedia.org/wiki/POSIX) only) to print a file;
-- `getSupportedPrintFormats()` to get all possible print formats for printDirect method which depends on OS. `RAW` and `TEXT` are supported from all OS-es;
-- `getJob(printerName, jobId)` to get a specific job info including job status;
-- `setJob(printerName, jobId, command)` to send a command to a job (e.g. `'CANCEL'` to cancel the job);
-- `getSupportedJobCommands()` to get supported job commands for setJob() depends on OS. `'CANCEL'` command is supported from all OS-es.
-
-### How to install:
+Native printing APIs for Node.js on Windows/Linux/macOS.
 
 ```
 npm install github:liamcmitchell/node-printer
 ```
 
-### How to use:
+```js
+import { getPrinters, print, getJob } from "node-printer";
 
-See [examples](examples)
+const printers = getPrinters();
+const printer = printers.find((p) => p.isDefault)?.name;
+if (printer) {
+  const jobId = print({
+    printer,
+    format: "TEXT",
+    data: "Text",
+  });
+  console.log(getJob(printer, jobId));
+}
+```
 
-### How to test:
+More usage examples in [examples/](examples).
+
+## API
+
+```ts
+// Returns all installed printers with current jobs and statuses
+function getPrinters(): PrinterDetails[];
+
+// Returns info for a specific printer
+function getPrinter(printer: string): PrinterDetails;
+
+// Sends data or a file to a printer, returns the job ID
+function print(options: {
+  printer: string; // printer name
+  data?: string | Uint8Array; // data to print
+  format?: string; // data format, e.g. "RAW", "TEXT" (default "RAW")
+  filename?: string; // path to file (POSIX only, alternative to data)
+  docname?: string; // document name shown in the queue
+  options?: Record<string, string>; // platform-specific print options
+}): number;
+
+// Returns supported data formats for print (platform-dependent)
+function getSupportedPrintFormats(): string[];
+
+// Returns job details including status
+function getJob(printer: string, jobId: number): JobDetails;
+
+// Sends a command to a job, e.g. "CANCEL"
+function setJob(printer: string, jobId: number, command: string): boolean;
+
+// Returns supported job commands for setJob (platform-dependent)
+function getSupportedJobCommands(): string[];
+```
+
+## Testing
 
 On macOS/Linux we need to register a mock printer with CUPS:
 
@@ -47,7 +73,7 @@ Run tests:
 npm run test
 ```
 
-### Contibutors:
+## Contibutors
 
 - Ion Lupascu, ionlupascu@gmail.com
 - Timo Kunze, @timokunze
@@ -55,6 +81,6 @@ npm run test
 - Eko Eryanto, @ekoeryanto
 - Liam Mitchell, liam.mitchell@siemens.com
 
-### License:
+## License
 
 [The MIT License (MIT)](http://opensource.org/licenses/MIT)

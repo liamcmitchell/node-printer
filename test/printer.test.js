@@ -29,24 +29,24 @@ test("capability APIs include RAW and CANCEL", () => {
   assert.ok(commands.includes("CANCEL"), "Expected CANCEL in getSupportedJobCommands()");
 });
 
-test("printDirect sends data and returns job id", () => {
-  const jobId = printer.printDirect({
+test("print sends data and returns job id", () => {
+  const jobId = printer.print({
     data: `test payload ${Date.now()}\n`,
     printer: printerName,
-    type: "RAW",
+    format: "RAW",
   });
 
-  assert.ok(jobId > 0, "Expected printDirect to return a valid job id");
+  assert.ok(jobId > 0, "Expected print to return a valid job id");
 
   const job = printer.getJob(printerName, jobId);
   assert.equal(job.id, jobId);
 });
 
 test("setJob CANCEL transitions job state", () => {
-  const jobId = printer.printDirect({
+  const jobId = printer.print({
     data: `node-printer cancel test ${Date.now()}\n`,
     printer: printerName,
-    type: "RAW",
+    format: "RAW",
   });
 
   const cancelled = printer.setJob(printerName, jobId, "CANCEL");
@@ -56,21 +56,25 @@ test("setJob CANCEL transitions job state", () => {
   assert.equal(job.id, jobId);
 });
 
-test("printFile submits file and returns job id", { skip: process.platform === "win32" }, () => {
-  const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
-  fs.writeFileSync(tmpFile, "test file content\n", "utf8");
+test(
+  "print with filename submits file and returns job id",
+  { skip: process.platform === "win32" },
+  () => {
+    const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, "test file content\n", "utf8");
 
-  try {
-    const jobId = printer.printFile({
-      filename: tmpFile,
-      printer: printerName,
-      docname: "node-printer-file-test",
-    });
-    assert.ok(jobId > 0, "Expected printFile to return a valid job id");
+    try {
+      const jobId = printer.print({
+        filename: tmpFile,
+        printer: printerName,
+        docname: "node-printer-file-test",
+      });
+      assert.ok(jobId > 0, "Expected printFile to return a valid job id");
 
-    const job = printer.getJob(printerName, jobId);
-    assert.equal(job.id, jobId);
-  } finally {
-    fs.unlinkSync(tmpFile);
-  }
-});
+      const job = printer.getJob(printerName, jobId);
+      assert.equal(job.id, jobId);
+    } finally {
+      fs.unlinkSync(tmpFile);
+    }
+  },
+);

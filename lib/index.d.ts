@@ -1,24 +1,16 @@
 export function getPrinters(): PrinterDetails[];
-export function getPrinter(printerName?: string): PrinterDetails;
-export function getDefaultPrinterName(): string | undefined;
-export function printDirect(options: PrintDirectOptions): number;
-export function printFile(options: PrintFileOptions): number;
+export function getPrinter(printer: string): PrinterDetails;
+export function print(options: PrintOptions): number;
 export function getSupportedPrintFormats(): string[];
-export function getJob(printerName: string, jobId: number): JobDetails;
-export function setJob(printerName: string, jobId: number, command: string): boolean;
+export function getJob(printer: string, jobId: number): JobDetails;
+export function setJob(printer: string, jobId: number, command: string): boolean;
 export function getSupportedJobCommands(): string[];
 
-export interface PrintDirectOptions {
-  data: string | Uint8Array;
-  printer?: string;
-  type?: string;
-  docname?: string;
-  options?: Record<string, string>;
-}
-
-export interface PrintFileOptions {
-  filename: string;
-  printer?: string;
+export interface PrintOptions {
+  printer: string;
+  data?: string | Uint8Array;
+  filename?: string;
+  format?: string;
   docname?: string;
   options?: Record<string, string>;
 }
