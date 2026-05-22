@@ -33,23 +33,11 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run rebuild
-      - name: Register Mock Printer (Linux/macOS)
+      - name: Register Printer (Linux/macOS)
         if: ${{ matrix.os != 'windows-latest' }}
         run: |
           sudo lpadmin -x NodePrinterMock 2>/dev/null || true
           sudo lpadmin -p NodePrinterMock -E -v ipp://127.0.0.1:8631/ipp/print
           lpstat -v NodePrinterMock
-      - name: Register Mock Printer (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
-        shell: pwsh
-        run: |
-          $AvailablePrinters = Get-Printer | Select-Object -ExpandProperty Name
-          Write-Host "Available printers: $($AvailablePrinters -join ', ')"
-          $PrinterName = "Microsoft Print to PDF"
-          if (-not ($AvailablePrinters -contains $PrinterName)) {
-            throw "Required printer '$PrinterName' was not found on this runner."
-          }
-          "MOCK_PRINTER_NAME=$PrinterName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Get-Printer -Name $PrinterName | Format-List Name,DriverName,PortName,PrinterStatus
       - name: Test
         run: npm run test

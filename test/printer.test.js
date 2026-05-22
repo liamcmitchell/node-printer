@@ -6,9 +6,7 @@ import test from "node:test";
 
 import * as printer from "../lib/index.js";
 
-const printerName =
-  process.env.MOCK_PRINTER_NAME ||
-  (process.platform === "win32" ? "Microsoft Print to PDF" : "NodePrinterMock");
+const printerName = process.platform === "win32" ? "Microsoft Print to PDF" : "NodePrinterMock";
 
 function printDirectAsync(options) {
   return new Promise((resolve, reject) => {

@@ -31,23 +31,15 @@ See [examples](examples)
 
 ### How to test:
 
-Register the mock printer with your OS (one-time setup):
+On macOS/Linux we need to register a mock printer with CUPS:
 
 ```bash
-# macOS/Linux (CUPS)
 sudo lpadmin -x NodePrinterMock 2>/dev/null || true
 sudo lpadmin -p NodePrinterMock -E -v ipp://127.0.0.1:8631/ipp/print
 lpstat -v NodePrinterMock
 ```
 
-```powershell
-# Windows (run elevated)
-$PrinterName = "NodePrinterMock"
-$IppUrl = "http://127.0.0.1:8631/ipp/print"
-Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue | Remove-Printer -ErrorAction SilentlyContinue
-Add-Printer -Name $PrinterName -IppURL $IppUrl
-Get-Printer -Name $PrinterName | Format-List Name,DriverName,PortName,PrinterStatus
-```
+On Windows, we use `Microsoft Print to PDF` which should be available by default.
 
 Run tests:
 
