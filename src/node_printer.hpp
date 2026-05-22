@@ -13,7 +13,7 @@
  * @param docname String, mandatory, specifying document name
  * @param type String, mandatory, specifying data type. E.G.: RAW, TEXT, ...
  *
- * @returns true for success, false for failure.
+ * @returns job id number on success, throws on failure.
  */
 Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs);
 
@@ -24,7 +24,7 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs);
  * @param docname String, mandatory, specifying document name
  * @param printer String, mandatory, specifying printer name
  *
- * @returns jobId for success, or error message for failure.
+ * @returns job id number on success, throws on failure.
  */
 Napi::Value PrintFile(const Napi::CallbackInfo &iArgs);
 
@@ -33,20 +33,10 @@ Napi::Value PrintFile(const Napi::CallbackInfo &iArgs);
  */
 Napi::Value getPrinters(const Napi::CallbackInfo &iArgs);
 
-/**
- * Return default printer name, if null then default printer is not set
- */
-Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs);
-
 /** Retrieve printer info and jobs
  * @param printer name String
  */
 Napi::Value getPrinter(const Napi::CallbackInfo &iArgs);
-
-/** Retrieve printer driver info
- * @param printer name String
- */
-Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve job info
  *  @param printer name String
@@ -54,22 +44,10 @@ Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs);
  */
 Napi::Value getJob(const Napi::CallbackInfo &iArgs);
 
-// TODO
 /** Set job command.
- * arguments:
  * @param printer name String
  * @param job id Number
  * @param job command String
- * Possible commands:
- *      "CANCEL"
- *      "PAUSE"
- *      "RESTART"
- *      "RESUME"
- *      "DELETE"
- *      "SENT-TO-PRINTER"
- *      "LAST-PAGE-EJECTED"
- *      "RETAIN"
- *      "RELEASE"
  */
 Napi::Value setJob(const Napi::CallbackInfo &iArgs);
 
@@ -80,31 +58,5 @@ Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs);
 /** Get supported job commands for setJob method
  */
 Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs);
-
-// TODO:
-//  optional ability to get printer spool
-
-// util class
-
-/** Memory value class management to avoid memory leak
- * TODO: move to std::unique_ptr on switching to C++11
- */
-template <typename Type> class MemValueBase {
-public:
-  MemValueBase() : _value(NULL) {}
-
-  /** Destructor. The allocated memory will be deallocated
-   */
-  virtual ~MemValueBase() {}
-
-  Type *get() { return _value; }
-  Type *operator->() { return &_value; }
-  operator bool() const { return (_value != NULL); }
-
-protected:
-  Type *_value;
-
-  virtual void free() {};
-};
 
 #endif

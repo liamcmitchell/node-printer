@@ -1,43 +1,34 @@
 export function getPrinters(): PrinterDetails[];
-export function getPrinter(printerName: string): PrinterDetails;
-export function getPrinterDriverOptions(printerName: string): PrinterDriverOptions;
-export function getSelectedPaperSize(printerName: string): string;
+export function getPrinter(printerName?: string): PrinterDetails;
 export function getDefaultPrinterName(): string | undefined;
-export function printDirect(options: PrintDirectOptions): void;
-export function printFile(options: PrintFileOptions): void;
+export function printDirect(options: PrintDirectOptions): number;
+export function printFile(options: PrintFileOptions): number;
 export function getSupportedPrintFormats(): string[];
 export function getJob(printerName: string, jobId: number): JobDetails;
-export function setJob(printerName: string, jobId: number, command: "CANCEL" | string): void;
+export function setJob(printerName: string, jobId: number, command: string): boolean;
 export function getSupportedJobCommands(): string[];
 
 export interface PrintDirectOptions {
   data: string | Uint8Array;
-  printer?: string | undefined;
-  type?: "RAW" | "TEXT" | "PDF" | "JPEG" | "POSTSCRIPT" | "COMMAND" | "AUTO" | undefined;
-  options?: { [key: string]: string } | undefined;
-  success?: PrintOnSuccessFunction | undefined;
-  error?: PrintOnErrorFunction | undefined;
+  printer?: string;
+  type?: string;
+  docname?: string;
+  options?: Record<string, string>;
 }
 
 export interface PrintFileOptions {
   filename: string;
-  printer?: string | undefined;
-  options?: { [key: string]: string } | undefined;
-  success?: PrintOnSuccessFunction | undefined;
-  error?: PrintOnErrorFunction | undefined;
+  printer?: string;
+  docname?: string;
+  options?: Record<string, string>;
 }
-
-export type PrintOnSuccessFunction = (jobId: string) => any;
-export type PrintOnErrorFunction = (err: Error) => any;
 
 export interface PrinterDetails {
   name: string;
   isDefault: boolean;
-  options: { [key: string]: string };
-}
-
-export interface PrinterDriverOptions {
-  [key: string]: { [key: string]: boolean };
+  options: Record<string, string>;
+  status?: string;
+  jobs?: JobDetails[];
 }
 
 export interface JobDetails {
@@ -48,10 +39,8 @@ export interface JobDetails {
   format: string;
   priority: number;
   size: number;
-  status: JobStatus[];
+  status: string[];
   completedTime: Date;
   creationTime: Date;
   processingTime: Date;
 }
-
-export type JobStatus = "PAUSED" | "PRINTING" | "PRINTED" | "CANCELLED" | "PENDING" | "ABORTED";

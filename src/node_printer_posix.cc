@@ -7,9 +7,6 @@
 #include <utility>
 
 #include <cups/cups.h>
-#include <cups/ppd.h>
-
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 namespace {
 typedef std::map<std::string, int> StatusMapType;
@@ -134,66 +131,6 @@ std::string parseJobObject(const cups_job_t *job,
   return "";
 }
 
-/** Parses printer driver PPD options
- */
-void populatePpdOptions(Napi::Object ppd_options, ppd_file_t *ppd,
-                        ppd_group_t *group) {
-  Napi::Env env = ppd_options.Env();
-  int i, j;
-  ppd_option_t *option;
-  ppd_choice_t *choice;
-  ppd_group_t *subgroup;
-
-  for (i = group->num_options, option = group->options; i > 0; --i, ++option) {
-    Napi::Object ppd_suboptions = Napi::Object::New(env);
-    for (j = option->num_choices, choice = option->choices; j > 0;
-         --j, ++choice) {
-      ppd_suboptions.Set(
-          Napi::String::New(env, choice->choice),
-          Napi::Boolean::New(env, static_cast<bool>(choice->marked)));
-    }
-
-    ppd_options.Set(Napi::String::New(env, option->keyword), ppd_suboptions);
-  }
-
-  for (i = group->num_subgroups, subgroup = group->subgroups; i > 0;
-       --i, ++subgroup) {
-    populatePpdOptions(ppd_options, ppd, subgroup);
-  }
-}
-
-/** Parse printer driver options
- * @return error string.
- */
-std::string parseDriverOptions(const cups_dest_t *printer,
-                               Napi::Object ppd_options) {
-  const char *filename;
-  ppd_file_t *ppd;
-  ppd_group_t *group;
-  int i;
-
-  std::ostringstream error_str; // error string
-
-  if ((filename = cupsGetPPD(printer->name)) != NULL) {
-    if ((ppd = ppdOpenFile(filename)) != NULL) {
-      ppdMarkDefaults(ppd);
-      cupsMarkOptions(ppd, printer->num_options, printer->options);
-
-      for (i = ppd->num_groups, group = ppd->groups; i > 0; --i, ++group) {
-        populatePpdOptions(ppd_options, ppd, group);
-      }
-      ppdClose(ppd);
-    } else {
-      error_str << "Unable to open PPD filename " << filename << " ";
-    }
-    unlink(filename);
-  } else {
-    error_str << "Unable to get CUPS PPD driver file. ";
-  }
-
-  return error_str.str();
-}
-
 /** Parse printer info object
  * @return error string.
  */
@@ -243,20 +180,21 @@ std::string parsePrinterInfo(const cups_dest_t *printer,
 }
 
 /// cups option class to automatically free memory.
-class CupsOptions : public MemValueBase<cups_option_t> {
+class CupsOptions {
 protected:
-  int num_options;
-  virtual void free() {
-    if (_value != NULL) {
-      cupsFreeOptions(num_options, get());
-      _value = NULL;
-      num_options = 0;
+  cups_option_t *_value = nullptr;
+  int num_options = 0;
+
+public:
+  CupsOptions() = default;
+  ~CupsOptions() {
+    if (_value != nullptr) {
+      cupsFreeOptions(num_options, _value);
     }
   }
 
-public:
-  CupsOptions() : num_options(0) {}
-  ~CupsOptions() { free(); }
+  CupsOptions(const CupsOptions &) = delete;
+  CupsOptions &operator=(const CupsOptions &) = delete;
 
   /// Add options from v8 object
   CupsOptions(Napi::Object iV8Options) : num_options(0) {
@@ -273,6 +211,7 @@ public:
   }
 
   const int &getNumOptions() { return num_options; }
+  cups_option_t *get() { return _value; }
 };
 } // namespace
 
@@ -300,22 +239,6 @@ Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
     return env.Undefined();
   }
   return result;
-}
-
-Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  // This does not return default user printer name according to
-  // https://www.cups.org/documentation.php/doc-2.0/api-cups.html#cupsGetDefault2
-  // so leave as undefined and JS implementation will loop in all printers
-
-  const char *printerName = NULL; // cupsGetDefault();
-
-  // return default printer name only if defined
-  if (printerName != NULL) {
-    return Napi::String::New(env, printerName);
-  }
-
-  return env.Undefined();
 }
 
 Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
@@ -346,36 +269,6 @@ Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
     return env.Undefined();
   }
   return result_printer;
-}
-
-Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  if (iArgs.Length() < 1) {
-    Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  std::string printername;
-  if (!iArgs[0].IsString()) {
-    Napi::Error::New(env, "Printer must be a string")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  printername = iArgs[0].As<Napi::String>().Utf8Value();
-
-  cups_dest_t *printers = NULL, *printer = NULL;
-  int printers_size = cupsGetDests(&printers);
-  printer = cupsGetDest(printername.c_str(), NULL, printers_size, printers);
-  Napi::Object driver_options = Napi::Object::New(env);
-  if (printer != NULL) {
-    parseDriverOptions(printer, driver_options);
-  }
-  cupsFreeDests(printers_size, printers);
-  if (printer == NULL) {
-    // printer not found
-    Napi::Error::New(env, "Printer not found").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  return driver_options;
 }
 
 Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
@@ -620,8 +513,8 @@ Napi::Value PrintFile(const Napi::CallbackInfo &iArgs) {
                              options.getNumOptions(), options.get());
 
   if (job_id == 0) {
-    return Napi::String::New(env, cupsLastErrorString());
-  } else {
-    return Napi::Number::New(env, job_id);
+    Napi::Error::New(env, cupsLastErrorString()).ThrowAsJavaScriptException();
+    return env.Undefined();
   }
+  return Napi::Number::New(env, job_id);
 }

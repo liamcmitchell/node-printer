@@ -13,30 +13,20 @@
 #include <string>
 #include <utility>
 
+#include <memory>
+
 namespace {
 typedef std::map<std::string, DWORD> StatusMapType;
 
-/** Memory value class management to avoid memory leak
- */
-template <typename Type> class MemValue : public MemValueBase<Type> {
-public:
-  /** Constructor of allocating iSizeKbytes bytes memory;
-   * @param iSizeKbytes size in bytes of required allocating memory
-   */
-  MemValue(const DWORD iSizeKbytes) {
-    this->_value = (Type *)malloc(iSizeKbytes);
-  }
-
-  ~MemValue() { free(); }
-
-protected:
-  virtual void free() {
-    if (this->_value != NULL) {
-      ::free(this->_value);
-      this->_value = NULL;
-    }
-  }
+struct FreeDeleter {
+  void operator()(void *p) const { ::free(p); }
 };
+
+template <typename Type> using MallocPtr = std::unique_ptr<Type, FreeDeleter>;
+
+template <typename Type> MallocPtr<Type> mallocValue(DWORD sizeBytes) {
+  return MallocPtr<Type>(static_cast<Type *>(malloc(sizeBytes)));
+}
 
 struct PrinterHandle {
   PrinterHandle(LPWSTR iPrinterName) {
@@ -312,7 +302,7 @@ std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
   DWORD bytes_needed = 0, totalJobs = 0;
   BOOL bError = EnumJobsW(*iPrinterHandle, 0, iTotalJobs, 2, NULL, bytes_needed,
                           &bytes_needed, &totalJobs);
-  MemValue<JOB_INFO_2W> jobs(bytes_needed);
+  auto jobs = mallocValue<JOB_INFO_2W>(bytes_needed);
   if (!jobs) {
     std::string error_str("Error on allocating memory for jobs: ");
     error_str += getLastErrorCodeAndMessage();
@@ -459,7 +449,7 @@ Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
   BOOL bError = EnumPrintersW(flags, NULL, 2, NULL, 0, &printers_size_bytes,
                               &printers_size);
   // allocate the required memmory
-  MemValue<PRINTER_INFO_2W> printers(printers_size_bytes);
+  auto printers = mallocValue<PRINTER_INFO_2W>(printers_size_bytes);
   if (!printers) {
     Napi::Error::New(env, "Error on allocating memory for printers")
         .ThrowAsJavaScriptException();
@@ -492,28 +482,6 @@ Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
   return result;
 }
 
-Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  // size in chars of the printer name:
-  // https://msdn.microsoft.com/en-us/library/windows/desktop/dd144876(v=vs.85).aspx
-  DWORD cSize = 0;
-  GetDefaultPrinterW(NULL, &cSize);
-
-  if (cSize == 0) {
-    return Napi::String::New(env, "");
-  }
-
-  MemValue<uint16_t> bPrinterName(cSize * sizeof(uint16_t));
-  BOOL res = GetDefaultPrinterW((LPWSTR)(bPrinterName.get()), &cSize);
-
-  if (!res) {
-    return Napi::String::New(env, "");
-  }
-
-  return Napi::String::New(
-      env, reinterpret_cast<const char16_t *>((uint16_t *)bPrinterName.get()));
-}
-
 Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
   Napi::Env env = iArgs.Env();
   if (iArgs.Length() < 1) {
@@ -540,7 +508,7 @@ Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
   DWORD printers_size_bytes = 0, dummyBytes = 0;
   GetPrinterW(*printerHandle, 2, NULL, printers_size_bytes,
               &printers_size_bytes);
-  MemValue<PRINTER_INFO_2W> printer(printers_size_bytes);
+  auto printer = mallocValue<PRINTER_INFO_2W>(printers_size_bytes);
   if (!printer) {
     Napi::Error::New(env, "Error on allocating memory for printers")
         .ThrowAsJavaScriptException();
@@ -563,13 +531,6 @@ Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
   }
 
   return result_printer;
-}
-
-Napi::Value getPrinterDriverOptions(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  Napi::Error::New(env, "not supported on windows")
-      .ThrowAsJavaScriptException();
-  return env.Undefined();
 }
 
 Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
@@ -608,7 +569,7 @@ Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
   DWORD size_bytes = 0, dummyBytes = 0;
   GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2, NULL, size_bytes,
           &size_bytes);
-  MemValue<JOB_INFO_2W> job(size_bytes);
+  auto job = mallocValue<JOB_INFO_2W>(size_bytes);
   if (!job) {
     Napi::Error::New(env, "Error on allocating memory for printers")
         .ThrowAsJavaScriptException();
@@ -706,7 +667,7 @@ Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
   LPWSTR nullVal = NULL;
   EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(NULL), numBytes, &numBytes,
                        &processorsNum);
-  MemValue<_PRINTPROCESSOR_INFO_1W> processors(numBytes);
+  auto processors = mallocValue<_PRINTPROCESSOR_INFO_1W>(numBytes);
   // Retrieve processors
   BOOL isOK =
       EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(processors.get()),
@@ -727,7 +688,7 @@ Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
     DWORD dataTypesNum = 0;
     EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1, (LPBYTE)(NULL),
                                  numBytes, &numBytes, &dataTypesNum);
-    MemValue<_DATATYPES_INFO_1W> dataTypes(numBytes);
+    auto dataTypes = mallocValue<_DATATYPES_INFO_1W>(numBytes);
     isOK = EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1,
                                         (LPBYTE)(dataTypes.get()), numBytes,
                                         &numBytes, &dataTypesNum);
