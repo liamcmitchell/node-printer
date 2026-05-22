@@ -1,13 +1,12 @@
-#include "node_printer.hpp"
-
 #if _MSC_VER
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <Wingdi.h>
 #include <Winspool.h>
-#include <windows.h>
 #pragma comment(lib, "Winspool.lib")
-#else
-#error "Unsupported compiler for windows. Feel free to add it."
 #endif
+
+#include "node_printer.hpp"
 
 #include <map>
 #include <node_version.h>
