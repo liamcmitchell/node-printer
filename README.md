@@ -26,13 +26,42 @@ More usage examples in [examples/](examples).
 ## API
 
 ```ts
-// Returns all installed printers with current jobs and statuses
+interface PrinterDetails {
+  name: string;
+  isDefault: boolean;
+  state: "idle" | "processing" | "stopped"; // IPP printer-state
+  stateReasons: string[]; // IPP printer-state-reasons keywords
+  jobs: JobDetails[];
+  raw: Record<string, any>; // platform-specific data (CUPS options / Windows PRINTER_INFO_2)
+}
+
+interface JobDetails {
+  id: number; // job identifier
+  name: string; // document/job title
+  printerName: string; // target printer
+  user: string; // submitting user
+  state: // IPP job-state
+    | "pending"
+    | "pending-held"
+    | "processing"
+    | "processing-stopped"
+    | "canceled"
+    | "aborted"
+    | "completed";
+  size: number; // size in bytes
+  createdAt: number; // epoch seconds
+  processingAt: number; // epoch seconds (0 if not yet processing)
+  completedAt: number; // epoch seconds (0 if not yet completed)
+  raw: Record<string, any>; // platform-specific data
+}
+
+// Get all printers
 function getPrinters(): PrinterDetails[];
 
-// Returns info for a specific printer
+// Get specific printer
 function getPrinter(printer: string): PrinterDetails;
 
-// Sends data or a file to a printer, returns the job ID
+// Send data or a file to a printer, returns the job ID
 function print(options: {
   printer: string; // printer name
   data?: string | Uint8Array; // data to print
@@ -42,16 +71,13 @@ function print(options: {
   options?: Record<string, string>; // platform-specific print options
 }): number;
 
-// Returns supported data formats for print (platform-dependent)
-function getSupportedPrintFormats(): string[];
-
-// Returns job details including status
+// Get job details
 function getJob(printer: string, jobId: number): JobDetails;
 
-// Sends a command to a job, e.g. "CANCEL"
+// Send a command to a job, e.g. "CANCEL"
 function setJob(printer: string, jobId: number, command: string): boolean;
 
-// Returns supported job commands for setJob (platform-dependent)
+function getSupportedPrintFormats(): string[];
 function getSupportedJobCommands(): string[];
 ```
 

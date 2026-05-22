@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <memory>
 
@@ -84,6 +85,55 @@ const StatusMapType &getStatusMap() {
   STATUS_PRINTER_ADD("WARMING-UP", PRINTER_STATUS_WARMING_UP);
 #undef STATUS_PRINTER_ADD
   return result;
+}
+
+/// Map Windows status bits to IPP printer-state-reasons keywords
+typedef std::map<DWORD, std::string> IppReasonMapType;
+
+const IppReasonMapType &getIppReasonMap() {
+  static IppReasonMapType result;
+  if (!result.empty()) {
+    return result;
+  }
+  result[PRINTER_STATUS_PAPER_JAM] = "media-jam";
+  result[PRINTER_STATUS_PAPER_OUT] = "media-empty";
+  result[PRINTER_STATUS_PAPER_PROBLEM] = "media-empty";
+  result[PRINTER_STATUS_MANUAL_FEED] = "media-needed";
+  result[PRINTER_STATUS_NO_TONER] = "toner-empty";
+  result[PRINTER_STATUS_TONER_LOW] = "toner-low";
+  result[PRINTER_STATUS_DOOR_OPEN] = "door-open";
+  result[PRINTER_STATUS_OUTPUT_BIN_FULL] = "output-area-full";
+  result[PRINTER_STATUS_OFFLINE] = "offline";
+  result[PRINTER_STATUS_NOT_AVAILABLE] = "offline";
+  result[PRINTER_STATUS_SERVER_OFFLINE] = "offline";
+  result[PRINTER_STATUS_PAUSED] = "paused";
+  result[PRINTER_STATUS_ERROR] = "other";
+  result[PRINTER_STATUS_USER_INTERVENTION] = "other";
+  result[PRINTER_STATUS_OUT_OF_MEMORY] = "other";
+  result[PRINTER_STATUS_PAGE_PUNT] = "other";
+  return result;
+}
+
+/// Fault bits that indicate printer should be in "stopped" state
+const DWORD kStoppedMask =
+    PRINTER_STATUS_PAUSED | PRINTER_STATUS_ERROR | PRINTER_STATUS_OFFLINE |
+    PRINTER_STATUS_PAPER_JAM | PRINTER_STATUS_PAPER_OUT |
+    PRINTER_STATUS_PAPER_PROBLEM | PRINTER_STATUS_NO_TONER |
+    PRINTER_STATUS_DOOR_OPEN | PRINTER_STATUS_USER_INTERVENTION |
+    PRINTER_STATUS_OUT_OF_MEMORY | PRINTER_STATUS_OUTPUT_BIN_FULL |
+    PRINTER_STATUS_NOT_AVAILABLE | PRINTER_STATUS_SERVER_OFFLINE |
+    PRINTER_STATUS_PAGE_PUNT;
+
+/// Get the system default printer name (UTF-16)
+std::u16string getDefaultPrinterName() {
+  DWORD size = 0;
+  GetDefaultPrinterW(NULL, &size);
+  if (size == 0)
+    return std::u16string();
+  std::vector<wchar_t> buf(size);
+  if (!GetDefaultPrinterW(buf.data(), &size))
+    return std::u16string();
+  return std::u16string(reinterpret_cast<char16_t *>(buf.data()));
 }
 
 const StatusMapType &getJobStatusMap() {
@@ -188,86 +238,132 @@ const StatusMapType &getJobCommandMap() {
   return result;
 }
 
+/// Convert SYSTEMTIME to Unix epoch seconds
+double systemTimeToEpoch(const SYSTEMTIME &st) {
+  FILETIME ft;
+  if (!SystemTimeToFileTime(&st, &ft))
+    return 0;
+  // FILETIME is 100-nanosecond intervals since 1601-01-01
+  ULARGE_INTEGER uli;
+  uli.LowPart = ft.dwLowDateTime;
+  uli.HighPart = ft.dwHighDateTime;
+  // Convert to seconds since Unix epoch (1970-01-01)
+  return (double)((uli.QuadPart - 116444736000000000ULL) / 10000000ULL);
+}
+
+/// Map Windows job status bitfield to IPP job-state keyword
+const char *jobStatusToIppState(DWORD status) {
+  if (status & (JOB_STATUS_DELETED | JOB_STATUS_DELETING))
+    return "canceled";
+  if (status & JOB_STATUS_ERROR)
+    return "aborted";
+#ifdef JOB_STATUS_COMPLETE
+  if (status & JOB_STATUS_COMPLETE)
+    return "completed";
+#endif
+  if (status & JOB_STATUS_PRINTED)
+    return "completed";
+  if (status & JOB_STATUS_PRINTING)
+    return "processing";
+  if (status & (JOB_STATUS_PAUSED | JOB_STATUS_BLOCKED_DEVQ |
+                JOB_STATUS_OFFLINE | JOB_STATUS_PAPEROUT |
+                JOB_STATUS_USER_INTERVENTION))
+    return "processing-stopped";
+  if (status & JOB_STATUS_SPOOLING)
+    return "pending";
+  return "pending";
+}
+
 void parseJobObject(JOB_INFO_2W *job, Napi::Object result_printer_job) {
   Napi::Env env = result_printer_job.Env();
-  // Common fields
-  // DWORD                JobId;
+  auto wstrToNapi = [&](LPCWSTR value) -> Napi::String {
+    return Napi::String::New(env, reinterpret_cast<const char16_t *>(value));
+  };
+
+  // --- Standardized fields ---
   result_printer_job.Set(Napi::String::New(env, "id"),
                          Napi::Number::New(env, job->JobId));
-  auto addJobStringProperty = [&](const char *name, LPCWSTR value) {
-    if ((value != NULL) && (*value != L'\0')) {
-      result_printer_job.Set(
-          name,
-          Napi::String::New(env, reinterpret_cast<const char16_t *>(value)));
-    }
-  };
-  // LPTSTR               pPrinterName;
-  addJobStringProperty("name", job->pPrinterName);
-  // LPTSTR               pPrinterName;
-  addJobStringProperty("printerName", job->pPrinterName);
-  // LPTSTR               pUserName;
-  addJobStringProperty("user", job->pUserName);
-  // LPTSTR               pDatatype;
-  addJobStringProperty("format", job->pDatatype);
-  // DWORD                Priority;
-  result_printer_job.Set(Napi::String::New(env, "priority"),
-                         Napi::Number::New(env, job->Priority));
-  // DWORD                Size;
+
+  // name = document name (pDocument), not printer name
+  if (job->pDocument && *job->pDocument != L'\0') {
+    result_printer_job.Set(Napi::String::New(env, "name"),
+                           wstrToNapi(job->pDocument));
+  } else {
+    result_printer_job.Set(Napi::String::New(env, "name"),
+                           Napi::String::New(env, ""));
+  }
+
+  if (job->pPrinterName && *job->pPrinterName != L'\0') {
+    result_printer_job.Set(Napi::String::New(env, "printerName"),
+                           wstrToNapi(job->pPrinterName));
+  }
+
+  if (job->pUserName && *job->pUserName != L'\0') {
+    result_printer_job.Set(Napi::String::New(env, "user"),
+                           wstrToNapi(job->pUserName));
+  } else {
+    result_printer_job.Set(Napi::String::New(env, "user"),
+                           Napi::String::New(env, ""));
+  }
+
   result_printer_job.Set(Napi::String::New(env, "size"),
                          Napi::Number::New(env, job->Size));
-  // DWORD                Status;
-  Napi::Array result_printer_job_status = Napi::Array::New(env);
+
+  // state (IPP job-state keyword)
+  result_printer_job.Set(Napi::String::New(env, "state"),
+                         Napi::String::New(env, jobStatusToIppState(job->Status)));
+
+  // Timestamps as epoch seconds
+  double createdAt = systemTimeToEpoch(job->Submitted);
+  result_printer_job.Set(Napi::String::New(env, "createdAt"),
+                         Napi::Number::New(env, createdAt));
+  result_printer_job.Set(Napi::String::New(env, "processingAt"),
+                         Napi::Number::New(env, 0.0));
+  result_printer_job.Set(Napi::String::New(env, "completedAt"),
+                         Napi::Number::New(env, 0.0));
+
+  // --- Platform-specific raw ---
+  Napi::Object raw = Napi::Object::New(env);
+
+  // Raw status strings
+  Napi::Array raw_status = Napi::Array::New(env);
   int i_status = 0;
-  for (StatusMapType::const_iterator itStatus = getJobStatusMap().begin();
-       itStatus != getJobStatusMap().end(); ++itStatus) {
-    if (job->Status & itStatus->second) {
-      result_printer_job_status.Set(
-          i_status++, Napi::String::New(env, itStatus->first.c_str()));
+  for (auto &entry : getJobStatusMap()) {
+    if (job->Status & entry.second) {
+      raw_status.Set(i_status++,
+                     Napi::String::New(env, entry.first.c_str()));
     }
   }
-  // LPTSTR               pStatus;
-  if ((job->pStatus != NULL) && (*job->pStatus != L'\0')) {
-    result_printer_job_status.Set(
-        i_status++, Napi::String::New(
-                        env, reinterpret_cast<const char16_t *>(job->pStatus)));
+  if (job->pStatus && *job->pStatus != L'\0') {
+    raw_status.Set(i_status++, wstrToNapi(job->pStatus));
   }
-  result_printer_job.Set(Napi::String::New(env, "status"),
-                         result_printer_job_status);
+  raw.Set(Napi::String::New(env, "status"), raw_status);
+  raw.Set(Napi::String::New(env, "statusNumber"),
+          Napi::Number::New(env, job->Status));
 
-  // Specific fields
-  // LPTSTR               pMachineName;
-  addJobStringProperty("machineName", job->pMachineName);
-  // LPTSTR               pDocument;
-  addJobStringProperty("document", job->pDocument);
-  // LPTSTR               pNotifyName;
-  addJobStringProperty("notifyName", job->pNotifyName);
-  // LPTSTR               pPrintProcessor;
-  addJobStringProperty("printProcessor", job->pPrintProcessor);
-  // LPTSTR               pParameters;
-  addJobStringProperty("parameters", job->pParameters);
-  // LPTSTR               pDriverName;
-  addJobStringProperty("driverName", job->pDriverName);
-  // LPDEVMODE            pDevMode;
-  // PSECURITY_DESCRIPTOR pSecurityDescriptor;
-  // DWORD                Position;
-  result_printer_job.Set(Napi::String::New(env, "position"),
-                         Napi::Number::New(env, job->Position));
-  // DWORD                StartTime;
-  result_printer_job.Set(Napi::String::New(env, "startTime"),
-                         Napi::Number::New(env, job->StartTime));
-  // DWORD                UntilTime;
-  result_printer_job.Set(Napi::String::New(env, "untilTime"),
-                         Napi::Number::New(env, job->UntilTime));
-  // DWORD                TotalPages;
-  result_printer_job.Set(Napi::String::New(env, "totalPages"),
-                         Napi::Number::New(env, job->TotalPages));
-  // SYSTEMTIME           Submitted;
-  // DWORD                Time;
-  result_printer_job.Set(Napi::String::New(env, "time"),
-                         Napi::Number::New(env, job->Time));
-  // DWORD                PagesPrinted;
-  result_printer_job.Set(Napi::String::New(env, "pagesPrinted"),
-                         Napi::Number::New(env, job->PagesPrinted));
+  if (job->pDatatype && *job->pDatatype != L'\0') {
+    raw.Set(Napi::String::New(env, "datatype"), wstrToNapi(job->pDatatype));
+  }
+  raw.Set(Napi::String::New(env, "priority"),
+          Napi::Number::New(env, job->Priority));
+  raw.Set(Napi::String::New(env, "position"),
+          Napi::Number::New(env, job->Position));
+  raw.Set(Napi::String::New(env, "totalPages"),
+          Napi::Number::New(env, job->TotalPages));
+  raw.Set(Napi::String::New(env, "pagesPrinted"),
+          Napi::Number::New(env, job->PagesPrinted));
+
+  auto addRawString = [&](const char *name, LPCWSTR value) {
+    if (value && *value != L'\0') {
+      raw.Set(name, wstrToNapi(value));
+    }
+  };
+  addRawString("machineName", job->pMachineName);
+  addRawString("driverName", job->pDriverName);
+  addRawString("printProcessor", job->pPrintProcessor);
+  addRawString("notifyName", job->pNotifyName);
+
+  result_printer_job.Set(Napi::String::New(env, "raw"), raw);
 }
 
 /**
@@ -337,102 +433,128 @@ std::string parsePrinterInfo(const PRINTER_INFO_2W *printer,
                              Napi::Object result_printer,
                              PrinterHandle &iPrinterHandle) {
   Napi::Env env = result_printer.Env();
-  auto addPrinterStringProperty = [&](const char *name, LPCWSTR value) {
-    if ((value != NULL) && (*value != L'\0')) {
-      result_printer.Set(
-          name,
-          Napi::String::New(env, reinterpret_cast<const char16_t *>(value)));
-    }
+  auto wstrToNapi = [&](LPCWSTR value) -> Napi::String {
+    return Napi::String::New(env, reinterpret_cast<const char16_t *>(value));
   };
-  // LPTSTR               pPrinterName;
-  addPrinterStringProperty("name", printer->pPrinterName);
-  // LPTSTR               pServerName;
-  addPrinterStringProperty("serverName", printer->pServerName);
-  // LPTSTR               pShareName;
-  addPrinterStringProperty("shareName", printer->pShareName);
-  // LPTSTR               pPortName;
-  addPrinterStringProperty("portName", printer->pPortName);
-  // LPTSTR               pDriverName;
-  addPrinterStringProperty("driverName", printer->pDriverName);
-  // LPTSTR               pComment;
-  addPrinterStringProperty("comment", printer->pComment);
-  // LPTSTR               pLocation;
-  addPrinterStringProperty("location", printer->pLocation);
-  // LPTSTR               pSepFile;
-  addPrinterStringProperty("sepFile", printer->pSepFile);
-  // LPTSTR               pPrintProcessor;
-  addPrinterStringProperty("printProcessor", printer->pPrintProcessor);
-  // LPTSTR               pDatatype;
-  addPrinterStringProperty("datatype", printer->pDatatype);
-  // LPTSTR               pParameters;
-  addPrinterStringProperty("parameters", printer->pParameters);
-  // DWORD                Status;
-  //  statuses from:
-  //  http://msdn.microsoft.com/en-gb/library/windows/desktop/dd162845(v=vs.85).aspx
-  Napi::Array result_printer_status = Napi::Array::New(env);
-  int i_status = 0;
-  for (StatusMapType::const_iterator itStatus = getStatusMap().begin();
-       itStatus != getStatusMap().end(); ++itStatus) {
-    if (printer->Status & itStatus->second) {
-      result_printer_status.Set(
-          i_status, Napi::String::New(env, itStatus->first.c_str()));
-      ++i_status;
+
+  // --- Standardized fields ---
+
+  // name
+  if (printer->pPrinterName) {
+    result_printer.Set(Napi::String::New(env, "name"),
+                       wstrToNapi(printer->pPrinterName));
+  }
+
+  // isDefault
+  std::u16string defaultName = getDefaultPrinterName();
+  bool isDefault = (printer->pPrinterName != nullptr) &&
+                   (defaultName == reinterpret_cast<const char16_t *>(
+                                       printer->pPrinterName));
+  result_printer.Set(Napi::String::New(env, "isDefault"),
+                     Napi::Boolean::New(env, isDefault));
+
+  // state
+  const char *state_str = "idle";
+  if (printer->Status & (PRINTER_STATUS_PRINTING | PRINTER_STATUS_PROCESSING)) {
+    state_str = "processing";
+  } else if (printer->Status & kStoppedMask) {
+    state_str = "stopped";
+  }
+  result_printer.Set(Napi::String::New(env, "state"),
+                     Napi::String::New(env, state_str));
+
+  // stateReasons
+  Napi::Array state_reasons = Napi::Array::New(env);
+  uint32_t reason_idx = 0;
+  if (printer->Status == 0) {
+    state_reasons.Set(reason_idx++, Napi::String::New(env, "none"));
+  } else {
+    for (auto &entry : getIppReasonMap()) {
+      if (printer->Status & entry.first) {
+        state_reasons.Set(reason_idx++,
+                          Napi::String::New(env, entry.second));
+      }
+    }
+    if (reason_idx == 0) {
+      // Has status bits set but none map to IPP reasons (e.g. only PRINTING)
+      state_reasons.Set(reason_idx++, Napi::String::New(env, "none"));
     }
   }
-  result_printer.Set(Napi::String::New(env, "status"), result_printer_status);
-  result_printer.Set(Napi::String::New(env, "statusNumber"),
-                     Napi::Number::New(env, printer->Status));
-  // DWORD                Attributes;
-  Napi::Array result_printer_attributes = Napi::Array::New(env);
-  int i_attribute = 0;
-  for (StatusMapType::const_iterator itAttribute = getAttributeMap().begin();
-       itAttribute != getAttributeMap().end(); ++itAttribute) {
-    if (printer->Attributes & itAttribute->second) {
-      result_printer_attributes.Set(
-          i_attribute, Napi::String::New(env, itAttribute->first.c_str()));
-      ++i_attribute;
-    }
-  }
-  result_printer.Set(Napi::String::New(env, "attributes"),
-                     result_printer_attributes);
-  // DWORD                Priority;
-  result_printer.Set(Napi::String::New(env, "priority"),
-                     Napi::Number::New(env, printer->Priority));
-  // DWORD                DefaultPriority;
-  result_printer.Set(Napi::String::New(env, "defaultPriority"),
-                     Napi::Number::New(env, printer->DefaultPriority));
-  // DWORD                cJobs;
-  // result_printer.Set(Napi::String::New(env, "jobs"), Napi::Number::New(env,
-  // // printer->cJobs)); DWORD                AveragePPM;
-  result_printer.Set(Napi::String::New(env, "averagePPM"),
-                     Napi::Number::New(env, printer->AveragePPM));
+  result_printer.Set(Napi::String::New(env, "stateReasons"), state_reasons);
 
-  // DWORD                StartTime;
-  if (printer->StartTime > 0) {
-    result_printer.Set(Napi::String::New(env, "startTime"),
-                       Napi::Number::New(env, printer->StartTime));
-  }
-  // DWORD                UntilTime;
-  if (printer->UntilTime > 0) {
-    result_printer.Set(Napi::String::New(env, "untilTime"),
-                       Napi::Number::New(env, printer->UntilTime));
-  }
-
-  // TODO: to finish to extract all data
-  // LPDEVMODE            pDevMode;
-  // PSECURITY_DESCRIPTOR pSecurityDescriptor;
-
+  // jobs
+  Napi::Array result_printer_jobs = Napi::Array::New(env);
   if (printer->cJobs > 0) {
-    Napi::Array result_printer_jobs = Napi::Array::New(env, printer->cJobs);
-    // get jobs
     std::string error_str =
         retrieveAndParseJobs(printer->pPrinterName, printer->cJobs,
                              result_printer_jobs, iPrinterHandle);
     if (!error_str.empty()) {
       return error_str;
     }
-    result_printer.Set(Napi::String::New(env, "jobs"), result_printer_jobs);
   }
+  result_printer.Set(Napi::String::New(env, "jobs"), result_printer_jobs);
+
+  // --- Platform-specific raw fields ---
+  Napi::Object raw = Napi::Object::New(env);
+
+  auto addRawString = [&](const char *name, LPCWSTR value) {
+    if ((value != NULL) && (*value != L'\0')) {
+      raw.Set(name, wstrToNapi(value));
+    }
+  };
+
+  addRawString("serverName", printer->pServerName);
+  addRawString("shareName", printer->pShareName);
+  addRawString("portName", printer->pPortName);
+  addRawString("driverName", printer->pDriverName);
+  addRawString("comment", printer->pComment);
+  addRawString("location", printer->pLocation);
+  addRawString("sepFile", printer->pSepFile);
+  addRawString("printProcessor", printer->pPrintProcessor);
+  addRawString("datatype", printer->pDatatype);
+  addRawString("parameters", printer->pParameters);
+
+  // Raw status info
+  Napi::Array raw_status = Napi::Array::New(env);
+  int i_status = 0;
+  for (auto &itStatus : getStatusMap()) {
+    if (printer->Status & itStatus.second) {
+      raw_status.Set(i_status++,
+                     Napi::String::New(env, itStatus.first.c_str()));
+    }
+  }
+  raw.Set(Napi::String::New(env, "status"), raw_status);
+  raw.Set(Napi::String::New(env, "statusNumber"),
+          Napi::Number::New(env, printer->Status));
+
+  // Attributes
+  Napi::Array raw_attributes = Napi::Array::New(env);
+  int i_attribute = 0;
+  for (auto &itAttribute : getAttributeMap()) {
+    if (printer->Attributes & itAttribute.second) {
+      raw_attributes.Set(i_attribute++,
+                         Napi::String::New(env, itAttribute.first.c_str()));
+    }
+  }
+  raw.Set(Napi::String::New(env, "attributes"), raw_attributes);
+
+  raw.Set(Napi::String::New(env, "priority"),
+          Napi::Number::New(env, printer->Priority));
+  raw.Set(Napi::String::New(env, "defaultPriority"),
+          Napi::Number::New(env, printer->DefaultPriority));
+  raw.Set(Napi::String::New(env, "averagePPM"),
+          Napi::Number::New(env, printer->AveragePPM));
+
+  if (printer->StartTime > 0) {
+    raw.Set(Napi::String::New(env, "startTime"),
+            Napi::Number::New(env, printer->StartTime));
+  }
+  if (printer->UntilTime > 0) {
+    raw.Set(Napi::String::New(env, "untilTime"),
+            Napi::Number::New(env, printer->UntilTime));
+  }
+
+  result_printer.Set(Napi::String::New(env, "raw"), raw);
   return "";
 }
 } // namespace

@@ -19,6 +19,12 @@ test("discovery APIs return expected printer", () => {
 
   const single = printer.getPrinter(printerName);
   assert.equal(single.name, printerName);
+  assert.ok(
+    ["idle", "processing", "stopped"].includes(single.state),
+    `Unexpected state: ${single.state}`,
+  );
+  assert.ok(Array.isArray(single.stateReasons), "stateReasons should be an array");
+  assert.ok(typeof single.raw === "object", "raw should be an object");
 });
 
 test("capability APIs include RAW and CANCEL", () => {
@@ -40,6 +46,10 @@ test("print sends data and returns job id", () => {
 
   const job = printer.getJob(printerName, jobId);
   assert.equal(job.id, jobId);
+  assert.equal(typeof job.name, "string");
+  assert.equal(typeof job.state, "string");
+  assert.equal(typeof job.createdAt, "number");
+  assert.ok(typeof job.raw === "object", "job.raw should be an object");
 });
 
 test("setJob CANCEL transitions job state", () => {

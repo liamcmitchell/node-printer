@@ -18,9 +18,10 @@ export interface PrintOptions {
 export interface PrinterDetails {
   name: string;
   isDefault: boolean;
-  options: Record<string, string>;
-  status?: string;
-  jobs?: JobDetails[];
+  state: "idle" | "processing" | "stopped";
+  stateReasons: string[];
+  jobs: JobDetails[];
+  raw: Record<string, any>;
 }
 
 export interface JobDetails {
@@ -28,11 +29,17 @@ export interface JobDetails {
   name: string;
   printerName: string;
   user: string;
-  format: string;
-  priority: number;
+  state:
+    | "pending"
+    | "pending-held"
+    | "processing"
+    | "processing-stopped"
+    | "canceled"
+    | "aborted"
+    | "completed";
   size: number;
-  status: string[];
-  completedTime: Date;
-  creationTime: Date;
-  processingTime: Date;
+  createdAt: number;
+  processingAt: number;
+  completedAt: number;
+  raw: Record<string, any>;
 }

@@ -17,19 +17,15 @@ const StatusMapType &getJobStatusMap() {
   if (!result.empty()) {
     return result;
   }
-  // add only first time
 #define STATUS_PRINTER_ADD(value, type)                                        \
   result.insert(std::make_pair(value, type))
-  // Common statuses
-  STATUS_PRINTER_ADD("PRINTING", IPP_JOB_PROCESSING);
-  STATUS_PRINTER_ADD("PRINTED", IPP_JOB_COMPLETED);
-  STATUS_PRINTER_ADD("PAUSED", IPP_JOB_HELD);
-  // Specific statuses
-  STATUS_PRINTER_ADD("PENDING", IPP_JOB_PENDING);
-  STATUS_PRINTER_ADD("PAUSED", IPP_JOB_STOPPED);
-  STATUS_PRINTER_ADD("CANCELLED", IPP_JOB_CANCELLED);
-  STATUS_PRINTER_ADD("ABORTED", IPP_JOB_ABORTED);
-
+  STATUS_PRINTER_ADD("pending", IPP_JOB_PENDING);
+  STATUS_PRINTER_ADD("pending-held", IPP_JOB_HELD);
+  STATUS_PRINTER_ADD("processing", IPP_JOB_PROCESSING);
+  STATUS_PRINTER_ADD("processing-stopped", IPP_JOB_STOPPED);
+  STATUS_PRINTER_ADD("canceled", IPP_JOB_CANCELLED);
+  STATUS_PRINTER_ADD("aborted", IPP_JOB_ABORTED);
+  STATUS_PRINTER_ADD("completed", IPP_JOB_COMPLETED);
 #undef STATUS_PRINTER_ADD
   return result;
 }
@@ -65,7 +61,8 @@ const FormatMapType &getPrinterFormatMap() {
 std::string parseJobObject(const cups_job_t *job,
                            Napi::Object result_printer_job) {
   Napi::Env env = result_printer_job.Env();
-  // Common fields
+
+  // Standardized fields
   result_printer_job.Set(Napi::String::New(env, "id"),
                          Napi::Number::New(env, job->id));
   result_printer_job.Set(Napi::String::New(env, "name"),
@@ -74,60 +71,38 @@ std::string parseJobObject(const cups_job_t *job,
                          Napi::String::New(env, job->dest));
   result_printer_job.Set(Napi::String::New(env, "user"),
                          Napi::String::New(env, job->user));
-  std::string job_format(job->format);
-
-  // Try to parse the data format, otherwise will write the unformatted one
-  for (FormatMapType::const_iterator itFormat = getPrinterFormatMap().begin();
-       itFormat != getPrinterFormatMap().end(); ++itFormat) {
-    if (itFormat->second == job_format) {
-      job_format = itFormat->first;
-      break;
-    }
-  }
-
-  result_printer_job.Set(Napi::String::New(env, "format"),
-                         Napi::String::New(env, job_format.c_str()));
-  result_printer_job.Set(Napi::String::New(env, "priority"),
-                         Napi::Number::New(env, job->priority));
   result_printer_job.Set(Napi::String::New(env, "size"),
                          Napi::Number::New(env, job->size));
-  Napi::Array result_printer_job_status = Napi::Array::New(env);
-  int i_status = 0;
-  for (StatusMapType::const_iterator itStatus = getJobStatusMap().begin();
-       itStatus != getJobStatusMap().end(); ++itStatus) {
-    if (job->state == itStatus->second) {
-      result_printer_job_status.Set(
-          i_status++, Napi::String::New(env, itStatus->first.c_str()));
-      // only one status could be on posix
+
+  // state (IPP job-state keyword)
+  const char *state_str = "pending";
+  for (auto &entry : getJobStatusMap()) {
+    if (job->state == entry.second) {
+      state_str = entry.first.c_str();
       break;
     }
   }
-  if (i_status == 0) {
-    // A new status? report as unsupported
-    std::ostringstream s;
-    s << "unsupported job status: " << job->state;
-    result_printer_job_status.Set(i_status++,
-                                  Napi::String::New(env, s.str().c_str()));
-  }
+  result_printer_job.Set(Napi::String::New(env, "state"),
+                         Napi::String::New(env, state_str));
 
-  result_printer_job.Set(Napi::String::New(env, "status"),
-                         result_printer_job_status);
+  // Timestamps as epoch seconds
+  result_printer_job.Set(Napi::String::New(env, "createdAt"),
+                         Napi::Number::New(env, (double)job->creation_time));
+  result_printer_job.Set(Napi::String::New(env, "processingAt"),
+                         Napi::Number::New(env, (double)job->processing_time));
+  result_printer_job.Set(Napi::String::New(env, "completedAt"),
+                         Napi::Number::New(env, (double)job->completed_time));
 
-  // Specific fields
-  //  Ecmascript store time in milliseconds, but time_t in seconds
+  // Platform-specific raw fields
+  Napi::Object raw = Napi::Object::New(env);
+  raw.Set(Napi::String::New(env, "format"),
+          Napi::String::New(env, job->format));
+  raw.Set(Napi::String::New(env, "priority"),
+          Napi::Number::New(env, job->priority));
+  raw.Set(Napi::String::New(env, "stateCode"),
+          Napi::Number::New(env, job->state));
+  result_printer_job.Set(Napi::String::New(env, "raw"), raw);
 
-  double creationTime = ((double)job->creation_time) * 1000;
-  double completedTime = ((double)job->completed_time) * 1000;
-  double processingTime = ((double)job->processing_time) * 1000;
-
-  result_printer_job.Set(Napi::String::New(env, "completedTime"),
-                         Napi::Date::New(env, completedTime));
-  result_printer_job.Set(Napi::String::New(env, "creationTime"),
-                         Napi::Date::New(env, creationTime));
-  result_printer_job.Set(Napi::String::New(env, "processingTime"),
-                         Napi::Date::New(env, processingTime));
-
-  // No error. return an empty string
   return "";
 }
 
@@ -143,38 +118,82 @@ std::string parsePrinterInfo(const cups_dest_t *printer,
       Napi::String::New(env, "isDefault"),
       Napi::Boolean::New(env, static_cast<bool>(printer->is_default)));
 
-  if (printer->instance) {
-    result_printer.Set(Napi::String::New(env, "instance"),
-                       Napi::String::New(env, printer->instance));
+  // Map printer-state to standardized state
+  const char *state_val = cupsGetOption("printer-state", printer->num_options,
+                                        printer->options);
+  const char *state_str = "idle";
+  if (state_val) {
+    switch (state_val[0]) {
+    case '4':
+      state_str = "processing";
+      break;
+    case '5':
+      state_str = "stopped";
+      break;
+    }
   }
+  result_printer.Set(Napi::String::New(env, "state"),
+                     Napi::String::New(env, state_str));
 
-  Napi::Object result_printer_options = Napi::Object::New(env);
+  // Parse printer-state-reasons into stateReasons array
+  Napi::Array state_reasons = Napi::Array::New(env);
+  const char *reasons_val = cupsGetOption(
+      "printer-state-reasons", printer->num_options, printer->options);
+  if (reasons_val) {
+    std::string reasons(reasons_val);
+    uint32_t idx = 0;
+    size_t pos = 0;
+    while (pos < reasons.size()) {
+      size_t comma = reasons.find(',', pos);
+      if (comma == std::string::npos)
+        comma = reasons.size();
+      std::string reason = reasons.substr(pos, comma - pos);
+      // Strip severity suffix (-report, -warning, -error)
+      size_t dash = reason.rfind('-');
+      if (dash != std::string::npos) {
+        std::string suffix = reason.substr(dash);
+        if (suffix == "-report" || suffix == "-warning" || suffix == "-error") {
+          reason = reason.substr(0, dash);
+        }
+      }
+      state_reasons.Set(idx++, Napi::String::New(env, reason));
+      pos = comma + 1;
+    }
+  }
+  result_printer.Set(Napi::String::New(env, "stateReasons"), state_reasons);
+
+  // All CUPS options go into raw
+  Napi::Object raw = Napi::Object::New(env);
   cups_option_t *dest_option = printer->options;
   for (int j = 0; j < printer->num_options; ++j, ++dest_option) {
-    result_printer_options.Set(Napi::String::New(env, dest_option->name),
-                               Napi::String::New(env, dest_option->value));
+    raw.Set(Napi::String::New(env, dest_option->name),
+            Napi::String::New(env, dest_option->value));
   }
-  result_printer.Set(Napi::String::New(env, "options"), result_printer_options);
+  if (printer->instance) {
+    raw.Set(Napi::String::New(env, "instance"),
+            Napi::String::New(env, printer->instance));
+  }
+  result_printer.Set(Napi::String::New(env, "raw"), raw);
+
   // Get printer jobs
+  Napi::Array result_priner_jobs = Napi::Array::New(env);
   cups_job_t *jobs;
   int totalJobs = cupsGetJobs(&jobs, printer->name, 0 /*0 means all users*/,
                               CUPS_WHICHJOBS_ACTIVE);
   std::string error_str;
   if (totalJobs > 0) {
-    Napi::Array result_priner_jobs = Napi::Array::New(env, totalJobs);
     int jobi = 0;
     cups_job_t *job = jobs;
     for (; jobi < totalJobs; ++jobi, ++job) {
       Napi::Object result_printer_job = Napi::Object::New(env);
       error_str = parseJobObject(job, result_printer_job);
       if (!error_str.empty()) {
-        // got an error? break then.
         break;
       }
       result_priner_jobs.Set(jobi, result_printer_job);
     }
-    result_printer.Set(Napi::String::New(env, "jobs"), result_priner_jobs);
   }
+  result_printer.Set(Napi::String::New(env, "jobs"), result_priner_jobs);
   cupsFreeJobs(totalJobs, jobs);
   return error_str;
 }
