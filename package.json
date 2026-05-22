@@ -40,7 +40,7 @@
     "clang-format-node": "^3.0.1",
     "node-abi": "^4.31.0",
     "node-gyp": "^12.3.0",
-    "oxfmt": "^0.44.0",
+    "oxfmt": "^0.51.0",
     "oxlint": "^1.59.0",
     "typescript": "^6.0.2"
   },

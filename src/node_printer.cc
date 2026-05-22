@@ -1,3 +1,7 @@
+#if _MSC_VER
+#pragma warning(disable : 4018)
+#endif
+
 #include "node_printer.hpp"
 
 #include <node_buffer.h>
