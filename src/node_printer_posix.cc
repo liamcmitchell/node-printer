@@ -525,8 +525,7 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
   docname = iArgs[2].As<Napi::String>().Utf8Value();
   std::string type;
   if (!iArgs[3].IsString()) {
-    Napi::Error::New(env, "Type must be a string")
-        .ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Type must be a string").ThrowAsJavaScriptException();
     return env.Undefined();
   }
   type = iArgs[3].As<Napi::String>().Utf8Value();

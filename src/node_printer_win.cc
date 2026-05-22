@@ -1,7 +1,6 @@
 #if _MSC_VER
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <Wingdi.h>
 #include <Winspool.h>
 #pragma comment(lib, "Winspool.lib")
 #endif
@@ -239,8 +238,8 @@ void parseJobObject(JOB_INFO_2W *job, Napi::Object result_printer_job) {
   // LPTSTR               pStatus;
   if ((job->pStatus != NULL) && (*job->pStatus != L'\0')) {
     result_printer_job_status.Set(
-        i_status++, Napi::String::New(env, reinterpret_cast<const char16_t *>(
-                                               (uint16_t *)) job->pStatus));
+        i_status++, Napi::String::New(
+                        env, reinterpret_cast<const char16_t *>(job->pStatus)));
   }
   result_printer_job.Set(Napi::String::New(env, "status"),
                          result_printer_job_status);
@@ -320,7 +319,7 @@ std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
     Napi::Object result_printer_job = Napi::Object::New(env);
     result_printer_job.Set(Napi::String::New(env, "error"),
                            Napi::String::New(env, error_str.c_str()));
-    result_printer_jobs.Set(0, result_printer_job);
+    result_printer_jobs.Set((uint32_t)0, result_printer_job);
     return std::string("");
   }
   DWORD dummy_bytes = 0;
@@ -332,7 +331,7 @@ std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
     Napi::Object result_printer_job = Napi::Object::New(env);
     result_printer_job.Set(Napi::String::New(env, "error"),
                            Napi::String::New(env, error_str.c_str()));
-    result_printer_jobs.Set(0, result_printer_job);
+    result_printer_jobs.Set((uint32_t)0, result_printer_job);
     return std::string("");
   }
   JOB_INFO_2W *job = jobs.get();
@@ -744,7 +743,7 @@ Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
     for (DWORD j = 0; j < dataTypesNum; ++j, ++pDataType) {
       result.Set(format_i++,
                  Napi::String::New(env, reinterpret_cast<const char16_t *>(
-                                            (uint16_t *))(pDataType->pName)));
+                                            pDataType->pName)));
     }
   }
 
@@ -788,8 +787,7 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
   docname = iArgs[2].As<Napi::String>().Utf16Value();
   std::u16string type;
   if (!iArgs[3].IsString()) {
-    Napi::Error::New(env, "Type must be a string")
-        .ThrowAsJavaScriptException();
+    Napi::Error::New(env, "Type must be a string").ThrowAsJavaScriptException();
     return env.Undefined();
   }
   type = iArgs[3].As<Napi::String>().Utf16Value();
