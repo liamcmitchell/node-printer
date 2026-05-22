@@ -63,8 +63,6 @@ npm run test
 - Eko Eryanto, @ekoeryanto
 - Liam Mitchell, liam.mitchell@siemens.com
 
-Feel free to download, test and propose new futures
-
 ### License:
 
 [The MIT License (MIT)](http://opensource.org/licenses/MIT)
