@@ -43,10 +43,13 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
         shell: pwsh
         run: |
-          $PrinterName = "NodePrinterMock"
-          $IppUrl = "http://127.0.0.1:8631/ipp/print"
-          Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue | Remove-Printer -ErrorAction SilentlyContinue
-          Add-Printer -Name $PrinterName -IppURL $IppUrl
+          $AvailablePrinters = Get-Printer | Select-Object -ExpandProperty Name
+          Write-Host "Available printers: $($AvailablePrinters -join ', ')"
+          $PrinterName = "Microsoft Print to PDF"
+          if (-not ($AvailablePrinters -contains $PrinterName)) {
+            throw "Required printer '$PrinterName' was not found on this runner."
+          }
+          "MOCK_PRINTER_NAME=$PrinterName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Get-Printer -Name $PrinterName | Format-List Name,DriverName,PortName,PrinterStatus
       - name: Test
         run: npm run test
