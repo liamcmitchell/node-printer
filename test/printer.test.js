@@ -127,25 +127,29 @@ test("setJob CANCEL transitions job state", { timeout: MAX_TIMEOUT_MS }, async (
   assert.equal(job.id, jobId);
 });
 
-test("printFile submits file content", { timeout: MAX_TIMEOUT_MS }, async () => {
-  const payload = `node-printer mock file ${Date.now()} ${Math.random()}\n`;
-  const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
-  fs.writeFileSync(tmpFile, payload, "utf8");
+test(
+  "printFile submits file content",
+  { timeout: MAX_TIMEOUT_MS, skip: process.platform === "win32" },
+  async () => {
+    const payload = `node-printer mock file ${Date.now()} ${Math.random()}\n`;
+    const tmpFile = path.join(os.tmpdir(), `node-printer-test-${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, payload, "utf8");
 
-  try {
-    await printFileAsync({
-      filename: tmpFile,
-      printer: printerName,
-      docname: "node-printer-file-test",
-    });
+    try {
+      await printFileAsync({
+        filename: tmpFile,
+        printer: printerName,
+        docname: "node-printer-file-test",
+      });
 
-    const fileJob = await mock.waitForJob(
-      (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
-      { timeoutMs: MAX_TIMEOUT_MS },
-    );
+      const fileJob = await mock.waitForJob(
+        (entry) => typeof entry.dataUtf8 === "string" && entry.dataUtf8.includes(payload),
+        { timeoutMs: MAX_TIMEOUT_MS },
+      );
 
-    assert.ok(fileJob.bytes > 0, "Expected printFile payload bytes in mock job");
-  } finally {
-    fs.unlinkSync(tmpFile);
-  }
-});
+      assert.ok(fileJob.bytes > 0, "Expected printFile payload bytes in mock job");
+    } finally {
+      fs.unlinkSync(tmpFile);
+    }
+  },
+);

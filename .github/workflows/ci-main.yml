@@ -1,4 +1,4 @@
-name: CI Build
+name: CI Build and Test
 permissions:
   contents: read
 
@@ -7,26 +7,45 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: Build
+  build-and-test:
+    name: Build and Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
-      - name: Setup Dependencies
+      - name: CUPS Setup (Linux)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update -y -qq
-          sudo apt-get install -y libcups2-dev
+          sudo apt-get install -y libcups2-dev cups cups-client cups-bsd
+          sudo systemctl start cups
       - name: Install Dependencies
         run: npm ci --ignore-scripts
+      - name: Lint
+        run: npm run lint
       - name: Build
+        run: npm run rebuild
+      - name: Register Mock Printer (Linux/macOS)
+        if: ${{ matrix.os != 'windows-latest' }}
         run: |
-          npm run rebuild
+          sudo lpadmin -x NodePrinterMock 2>/dev/null || true
+          sudo lpadmin -p NodePrinterMock -E -v ipp://127.0.0.1:8631/ipp/print
+          lpstat -v NodePrinterMock
+      - name: Register Mock Printer (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $PrinterName = "NodePrinterMock"
+          $IppUrl = "http://127.0.0.1:8631/ipp/print"
+          Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue | Remove-Printer -ErrorAction SilentlyContinue
+          Add-Printer -Name $PrinterName -IppURL $IppUrl
+          Get-Printer -Name $PrinterName | Format-List Name,DriverName,PortName,PrinterStatus
+      - name: Test
+        run: npm run test
