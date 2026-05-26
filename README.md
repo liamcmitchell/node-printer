@@ -2,6 +2,16 @@
 
 Native printing APIs for Node.js on Windows/Linux/macOS.
 
+Requires `node-gyp` platform prerequisites: https://github.com/nodejs/node-gyp#installation
+
+Linux also needs CUPS development headers to build, and a CUPS server at runtime.
+
+```bash
+sudo apt-get update -y
+sudo apt-get install -y libcups2-dev cups cups-client cups-bsd
+sudo systemctl start cups
+```
+
 ```
 npm install github:liamcmitchell/node-printer
 ```
