@@ -426,13 +426,13 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
   print_options = iArgs[4].As<Napi::Object>();
 
   std::string type_str(type);
-  FormatMapType::const_iterator itFormat = getPrinterFormatMap().find(type_str);
-  if (itFormat == getPrinterFormatMap().end()) {
-    Napi::Error::New(env, "unsupported format type")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
+  auto itFormat = getPrinterFormatMap().find(type_str);
+  // Known aliases (RAW, PDF, etc.) are translated to MIME types.
+  // Anything else is passed directly to CUPS as a MIME type — let CUPS
+  // reject it if unsupported, matching the Windows spooler behaviour.
+  if (itFormat != getPrinterFormatMap().end()) {
+    type_str = itFormat->second;
   }
-  type_str = itFormat->second;
 
   CupsOptions options(print_options);
 

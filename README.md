@@ -87,8 +87,25 @@ function getJob(printer: string, jobId: number): JobDetails | null;
 // Cancel a print job; no-op if the job no longer exists
 function cancelJob(printer: string, jobId: number): void;
 
+// Returns the built-in format aliases accepted by the format option
 function getSupportedPrintFormats(): string[];
 ```
+
+### Print formats
+
+`getSupportedPrintFormats()` returns built-in case-sensitive aliases (`RAW`, `TEXT`, `PDF`, …) that are translated to MIME types before being passed to the platform spooler. Any string not in this list is passed to the spooler as-is, as a MIME type.
+
+| Alias        | MIME type                                                      |
+| ------------ | -------------------------------------------------------------- |
+| `RAW`        | `application/vnd.cups-raw` (POSIX) / raw passthrough (Windows) |
+| `TEXT`       | `text/plain`                                                   |
+| `PDF`        | `application/pdf`                                              |
+| `JPEG`       | `image/jpeg`                                                   |
+| `POSTSCRIPT` | `application/postscript`                                       |
+
+**POSIX (CUPS):** When a MIME type is passed directly, CUPS looks it up in its filter database. If no filter is registered for the type, CUPS falls back to `application/octet-stream`, which may cause the job to be held.
+
+**Windows:** The data type string is passed directly to the Windows spooler. Custom data types are supported as long as the printer driver recognises them.
 
 ## Testing
 
