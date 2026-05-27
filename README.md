@@ -68,8 +68,8 @@ interface JobDetails {
 // Get all printers
 function getPrinters(): PrinterDetails[];
 
-// Get specific printer
-function getPrinter(printer: string): PrinterDetails;
+// Get specific printer, or null if it does not exist
+function getPrinter(printer: string): PrinterDetails | null;
 
 // Send data or a file to a printer, returns the job ID
 function print(options: {

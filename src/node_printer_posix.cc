@@ -283,9 +283,7 @@ Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
   }
   cupsFreeDests(printers_size, printers);
   if (printer == NULL) {
-    // printer not found
-    Napi::Error::New(env, "Printer not found").ThrowAsJavaScriptException();
-    return env.Undefined();
+    return env.Null();
   }
   return result_printer;
 }

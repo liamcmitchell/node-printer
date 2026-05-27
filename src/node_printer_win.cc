@@ -598,10 +598,7 @@ Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
   PrinterHandle printerHandle(
       reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   if (!printerHandle) {
-    std::string error_str("error on PrinterHandle: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
+    return env.Null();
   }
   DWORD printers_size_bytes = 0, dummyBytes = 0;
   GetPrinterW(*printerHandle, 2, NULL, printers_size_bytes,

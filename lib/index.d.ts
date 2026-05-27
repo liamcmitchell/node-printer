@@ -1,5 +1,5 @@
 export function getPrinters(): PrinterDetails[];
-export function getPrinter(printer: string): PrinterDetails;
+export function getPrinter(printer: string): PrinterDetails | null;
 export function print(options: PrintOptions): number;
 export function getSupportedPrintFormats(): string[];
 export function getJob(printer: string, jobId: number): JobDetails | null;
