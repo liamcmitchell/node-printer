@@ -81,14 +81,13 @@ function print(options: {
   options?: Record<string, string>; // platform-specific print options
 }): number;
 
-// Get job details
-function getJob(printer: string, jobId: number): JobDetails;
+// Get job details, or null if the job no longer exists
+function getJob(printer: string, jobId: number): JobDetails | null;
 
-// Send a command to a job, e.g. "CANCEL"
-function setJob(printer: string, jobId: number, command: string): boolean;
+// Cancel a print job; no-op if the job no longer exists
+function cancelJob(printer: string, jobId: number): void;
 
 function getSupportedPrintFormats(): string[];
-function getSupportedJobCommands(): string[];
 ```
 
 ## Testing

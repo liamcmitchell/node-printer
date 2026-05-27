@@ -39,24 +39,19 @@ Napi::Value getPrinters(const Napi::CallbackInfo &iArgs);
 Napi::Value getPrinter(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve job info
- *  @param printer name String
- *  @param job id Number
+ * @param printer name String
+ * @param job id Number
  */
 Napi::Value getJob(const Napi::CallbackInfo &iArgs);
 
-/** Set job command.
+/** Cancel a print job. Silently ignores jobs that no longer exist.
  * @param printer name String
  * @param job id Number
- * @param job command String
  */
-Napi::Value setJob(const Napi::CallbackInfo &iArgs);
+Napi::Value cancelJob(const Napi::CallbackInfo &iArgs);
 
 /** Get supported print formats for printDirect. It depends on platform
  */
 Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs);
-
-/** Get supported job commands for setJob method
- */
-Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs);
 
 #endif

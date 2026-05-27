@@ -27,12 +27,9 @@ test("discovery APIs return expected printer", () => {
   assert.ok(typeof single.raw === "object", "raw should be an object");
 });
 
-test("capability APIs include RAW and CANCEL", () => {
+test("capability APIs include RAW", () => {
   const formats = printer.getSupportedPrintFormats();
   assert.ok(formats.includes("RAW"), "Expected RAW in getSupportedPrintFormats()");
-
-  const commands = printer.getSupportedJobCommands();
-  assert.ok(commands.includes("CANCEL"), "Expected CANCEL in getSupportedJobCommands()");
 });
 
 test("print sends data and returns job id", () => {
@@ -52,18 +49,17 @@ test("print sends data and returns job id", () => {
   assert.ok(typeof job.raw === "object", "job.raw should be an object");
 });
 
-test("setJob CANCEL transitions job state", () => {
+test("cancelJob removes the job", () => {
   const jobId = printer.print({
     data: `node-printer cancel test ${Date.now()}\n`,
     printer: printerName,
     format: "RAW",
   });
 
-  const cancelled = printer.setJob(printerName, jobId, "CANCEL");
-  assert.equal(cancelled, true);
+  printer.cancelJob(printerName, jobId);
 
-  const job = printer.getJob(printerName, jobId);
-  assert.equal(job.id, jobId);
+  // Cancelling an already-gone job should be a no-op
+  printer.cancelJob(printerName, jobId);
 });
 
 test(

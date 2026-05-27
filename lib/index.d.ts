@@ -2,9 +2,8 @@ export function getPrinters(): PrinterDetails[];
 export function getPrinter(printer: string): PrinterDetails;
 export function print(options: PrintOptions): number;
 export function getSupportedPrintFormats(): string[];
-export function getJob(printer: string, jobId: number): JobDetails;
-export function setJob(printer: string, jobId: number, command: string): boolean;
-export function getSupportedJobCommands(): string[];
+export function getJob(printer: string, jobId: number): JobDetails | null;
+export function cancelJob(printer: string, jobId: number): void;
 
 export interface PrintOptions {
   printer: string;

@@ -214,30 +214,6 @@ const StatusMapType &getAttributeMap() {
   return result;
 }
 
-const StatusMapType &getJobCommandMap() {
-  static StatusMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  // add only first time
-#define COMMAND_JOB_ADD(value, type) result.insert(std::make_pair(value, type))
-  COMMAND_JOB_ADD("CANCEL", JOB_CONTROL_CANCEL);
-  COMMAND_JOB_ADD("PAUSE", JOB_CONTROL_PAUSE);
-  COMMAND_JOB_ADD("RESTART", JOB_CONTROL_RESTART);
-  COMMAND_JOB_ADD("RESUME", JOB_CONTROL_RESUME);
-  COMMAND_JOB_ADD("DELETE", JOB_CONTROL_DELETE);
-  COMMAND_JOB_ADD("SENT-TO-PRINTER", JOB_CONTROL_SENT_TO_PRINTER);
-  COMMAND_JOB_ADD("LAST-PAGE-EJECTED", JOB_CONTROL_LAST_PAGE_EJECTED);
-#ifdef JOB_CONTROL_RETAIN
-  COMMAND_JOB_ADD("RETAIN", JOB_CONTROL_RETAIN);
-#endif
-#ifdef JOB_CONTROL_RELEASE
-  COMMAND_JOB_ADD("RELEASE", JOB_CONTROL_RELEASE);
-#endif
-#undef COMMAND_JOB_ADD
-  return result;
-}
-
 /// Convert SYSTEMTIME to Unix epoch seconds
 double systemTimeToEpoch(const SYSTEMTIME &st) {
   FILETIME ft;
@@ -700,20 +676,17 @@ Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
   BOOL bOK = GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2,
                      (LPBYTE)job.get(), size_bytes, &dummyBytes);
   if (!bOK) {
-    std::string error_str("Error on GetJob. Wrong job id or it was deleted: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
+    return env.Null();
   }
   Napi::Object result_printer_job = Napi::Object::New(env);
   parseJobObject(job.get(), result_printer_job);
   return result_printer_job;
 }
 
-Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
+Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
   Napi::Env env = iArgs.Env();
-  if (iArgs.Length() < 3) {
-    Napi::Error::New(env, "Expected 3 arguments").ThrowAsJavaScriptException();
+  if (iArgs.Length() < 2) {
+    Napi::Error::New(env, "Expected 2 arguments").ThrowAsJavaScriptException();
     return env.Undefined();
   }
   std::u16string printername;
@@ -730,28 +703,10 @@ Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
-  std::string jobCommandV8;
-  if (!iArgs[2].IsString()) {
-    Napi::Error::New(env, "Job command must be a string")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  jobCommandV8 = iArgs[2].As<Napi::String>().Utf8Value();
   if (jobId < 0) {
     Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  std::string jobCommandStr(jobCommandV8);
-  StatusMapType::const_iterator itJobCommand =
-      getJobCommandMap().find(jobCommandStr);
-  if (itJobCommand == getJobCommandMap().end()) {
-    Napi::Error::New(env, "wrong job command. use getSupportedJobCommands to "
-                          "see the possible commands")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  DWORD jobCommand = itJobCommand->second;
-  // Open a handle to the printer.
   PrinterHandle printerHandle(
       reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
   if (!printerHandle) {
@@ -760,21 +715,10 @@ Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
     Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  // TODO: add the possibility to set job properties
-  // http://msdn.microsoft.com/en-us/library/windows/desktop/dd162978(v=vs.85).aspx
-  BOOL ok = SetJobW(*printerHandle, (DWORD)jobId, 0, NULL, jobCommand);
-  return Napi::Boolean::New(env, ok == TRUE);
-}
-
-Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  Napi::Array result = Napi::Array::New(env);
-  int i = 0;
-  for (StatusMapType::const_iterator itJob = getJobCommandMap().begin();
-       itJob != getJobCommandMap().end(); ++itJob) {
-    result.Set(i++, Napi::String::New(env, itJob->first.c_str()));
-  }
-  return result;
+  // Use JOB_CONTROL_DELETE (Microsoft recommends over JOB_CONTROL_CANCEL).
+  // Returns FALSE if the job no longer exists — treat that as a no-op.
+  SetJobW(*printerHandle, (DWORD)jobId, 0, NULL, JOB_CONTROL_DELETE);
+  return env.Undefined();
 }
 
 Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {

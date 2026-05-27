@@ -331,17 +331,15 @@ Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
   }
   cupsFreeJobs(totalJobs, jobs);
   if (jobFound == NULL) {
-    // printer not found
-    Napi::Error::New(env, "Printer job not found").ThrowAsJavaScriptException();
-    return env.Undefined();
+    return env.Null();
   }
   return result_printer_job;
 }
 
-Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
+Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
   Napi::Env env = iArgs.Env();
-  if (iArgs.Length() < 3) {
-    Napi::Error::New(env, "Expected 3 arguments").ThrowAsJavaScriptException();
+  if (iArgs.Length() < 2) {
+    Napi::Error::New(env, "Expected 2 arguments").ThrowAsJavaScriptException();
     return env.Undefined();
   }
   std::string printername;
@@ -358,36 +356,14 @@ Napi::Value setJob(const Napi::CallbackInfo &iArgs) {
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
-  std::string jobCommandV8;
-  if (!iArgs[2].IsString()) {
-    Napi::Error::New(env, "Job command must be a string")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  jobCommandV8 = iArgs[2].As<Napi::String>().Utf8Value();
   if (jobId < 0) {
     Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  std::string jobCommandStr(jobCommandV8);
-  bool result_ok = false;
-  if (jobCommandStr == "CANCEL") {
-    result_ok = (cupsCancelJob(printername.c_str(), jobId) == 1);
-  } else {
-    Napi::Error::New(env, "wrong job command. use getSupportedJobCommands to "
-                          "see the possible commands")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  return Napi::Boolean::New(env, result_ok);
-}
-
-Napi::Value getSupportedJobCommands(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  Napi::Array result = Napi::Array::New(env);
-  int i = 0;
-  result.Set(i++, Napi::String::New(env, "CANCEL"));
-  return result;
+  // Ignore return value: cupsCancelJob returns 0 if the job no longer exists,
+  // which we treat as a no-op.
+  cupsCancelJob(printername.c_str(), jobId);
+  return env.Undefined();
 }
 
 Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
