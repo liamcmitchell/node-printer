@@ -93,19 +93,21 @@ function getSupportedPrintFormats(): string[];
 
 ### Print formats
 
-`getSupportedPrintFormats()` returns built-in case-sensitive aliases (`RAW`, `TEXT`, `PDF`, …) that are translated to MIME types before being passed to the platform spooler. Any string not in this list is passed to the spooler as-is, as a MIME type.
+Behaviour differs by platform:
 
-| Alias        | MIME type                                                      |
-| ------------ | -------------------------------------------------------------- |
-| `RAW`        | `application/vnd.cups-raw` (POSIX) / raw passthrough (Windows) |
-| `TEXT`       | `text/plain`                                                   |
-| `PDF`        | `application/pdf`                                              |
-| `JPEG`       | `image/jpeg`                                                   |
-| `POSTSCRIPT` | `application/postscript`                                       |
+**POSIX (CUPS):** `getSupportedPrintFormats()` returns fixed aliases. When printing, aliases are translated to MIME types and passed to CUPS. Any string not in the alias list is passed to CUPS as-is as a MIME type; if no CUPS filter is registered for it, the job may be held.
 
-**POSIX (CUPS):** When a MIME type is passed directly, CUPS looks it up in its filter database. If no filter is registered for the type, CUPS falls back to `application/octet-stream`, which may cause the job to be held.
+| Alias        | CUPS MIME type             |
+| ------------ | -------------------------- |
+| `RAW`        | `application/vnd.cups-raw` |
+| `TEXT`       | `text/plain`               |
+| `PDF`        | `application/pdf`          |
+| `JPEG`       | `image/jpeg`               |
+| `POSTSCRIPT` | `application/postscript`   |
 
-**Windows:** The data type string is passed directly to the Windows spooler. Custom data types are supported as long as the printer driver recognises them.
+**Windows:** `getSupportedPrintFormats()` queries `EnumPrintProcessorDatatypes` and returns the datatypes supported by the installed print processors (typically `RAW`, `TEXT`, `NT EMF 1.008`, `XPS_PASS` — no PDF or JPEG). The format string is passed directly to `StartDocPrinterW` as `pDatatype` with no translation; the printer driver must natively recognise it.
+
+> **PDF on Windows:** Passing `PDF` data on Windows will only work if the specific printer driver natively accepts PDF (e.g. Microsoft Print to PDF). Most hardware printer drivers do not — they require PDF to be converted to GDI/EMF first, which Windows has no built-in API for. In an Electron app, use [`webContents.print()`](https://www.electronjs.org/docs/latest/api/web-contents#contentsprintoptions-callback) instead, which routes through Chromium's PDFium-based PDF→EMF pipeline.
 
 ## Testing
 
