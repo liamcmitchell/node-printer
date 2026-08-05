@@ -51,42 +51,41 @@ struct PrinterHandle {
 };
 
 const StatusMapType &getStatusMap() {
-  static StatusMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  // add only first time
-#define STATUS_PRINTER_ADD(value, type)                                        \
-  result.insert(std::make_pair(value, type))
-  STATUS_PRINTER_ADD("BUSY", PRINTER_STATUS_BUSY);
-  STATUS_PRINTER_ADD("DOOR-OPEN", PRINTER_STATUS_DOOR_OPEN);
-  STATUS_PRINTER_ADD("DRIVER_UPDATE_NEEDED",
-                     PRINTER_STATUS_DRIVER_UPDATE_NEEDED);
-  STATUS_PRINTER_ADD("ERROR", PRINTER_STATUS_ERROR);
-  STATUS_PRINTER_ADD("INITIALIZING", PRINTER_STATUS_INITIALIZING);
-  STATUS_PRINTER_ADD("IO-ACTIVE", PRINTER_STATUS_IO_ACTIVE);
-  STATUS_PRINTER_ADD("MANUAL-FEED", PRINTER_STATUS_MANUAL_FEED);
-  STATUS_PRINTER_ADD("NO-TONER", PRINTER_STATUS_NO_TONER);
-  STATUS_PRINTER_ADD("NOT-AVAILABLE", PRINTER_STATUS_NOT_AVAILABLE);
-  STATUS_PRINTER_ADD("OFFLINE", PRINTER_STATUS_OFFLINE);
-  STATUS_PRINTER_ADD("OUT-OF-MEMORY", PRINTER_STATUS_OUT_OF_MEMORY);
-  STATUS_PRINTER_ADD("OUTPUT-BIN-FULL", PRINTER_STATUS_OUTPUT_BIN_FULL);
-  STATUS_PRINTER_ADD("PAGE-PUNT", PRINTER_STATUS_PAGE_PUNT);
-  STATUS_PRINTER_ADD("PAPER-JAM", PRINTER_STATUS_PAPER_JAM);
-  STATUS_PRINTER_ADD("PAPER-OUT", PRINTER_STATUS_PAPER_OUT);
-  STATUS_PRINTER_ADD("PAPER-PROBLEM", PRINTER_STATUS_PAPER_PROBLEM);
-  STATUS_PRINTER_ADD("PAUSED", PRINTER_STATUS_PAUSED);
-  STATUS_PRINTER_ADD("PENDING-DELETION", PRINTER_STATUS_PENDING_DELETION);
-  STATUS_PRINTER_ADD("POWER-SAVE", PRINTER_STATUS_POWER_SAVE);
-  STATUS_PRINTER_ADD("PRINTING", PRINTER_STATUS_PRINTING);
-  STATUS_PRINTER_ADD("PROCESSING", PRINTER_STATUS_PROCESSING);
-  STATUS_PRINTER_ADD("SERVER-OFFLINE", PRINTER_STATUS_SERVER_OFFLINE);
-  STATUS_PRINTER_ADD("SERVER-UNKNOWN", PRINTER_STATUS_SERVER_UNKNOWN);
-  STATUS_PRINTER_ADD("TONER-LOW", PRINTER_STATUS_TONER_LOW);
-  STATUS_PRINTER_ADD("USER-INTERVENTION", PRINTER_STATUS_USER_INTERVENTION);
-  STATUS_PRINTER_ADD("WAITING", PRINTER_STATUS_WAITING);
-  STATUS_PRINTER_ADD("WARMING-UP", PRINTER_STATUS_WARMING_UP);
-#undef STATUS_PRINTER_ADD
+  static const StatusMapType result = [] {
+    StatusMapType map;
+    map.insert(std::make_pair("BUSY", PRINTER_STATUS_BUSY));
+    map.insert(std::make_pair("DOOR-OPEN", PRINTER_STATUS_DOOR_OPEN));
+    map.insert(std::make_pair("DRIVER_UPDATE_NEEDED",
+                              PRINTER_STATUS_DRIVER_UPDATE_NEEDED));
+    map.insert(std::make_pair("ERROR", PRINTER_STATUS_ERROR));
+    map.insert(std::make_pair("INITIALIZING", PRINTER_STATUS_INITIALIZING));
+    map.insert(std::make_pair("IO-ACTIVE", PRINTER_STATUS_IO_ACTIVE));
+    map.insert(std::make_pair("MANUAL-FEED", PRINTER_STATUS_MANUAL_FEED));
+    map.insert(std::make_pair("NO-TONER", PRINTER_STATUS_NO_TONER));
+    map.insert(std::make_pair("NOT-AVAILABLE", PRINTER_STATUS_NOT_AVAILABLE));
+    map.insert(std::make_pair("OFFLINE", PRINTER_STATUS_OFFLINE));
+    map.insert(std::make_pair("OUT-OF-MEMORY", PRINTER_STATUS_OUT_OF_MEMORY));
+    map.insert(
+        std::make_pair("OUTPUT-BIN-FULL", PRINTER_STATUS_OUTPUT_BIN_FULL));
+    map.insert(std::make_pair("PAGE-PUNT", PRINTER_STATUS_PAGE_PUNT));
+    map.insert(std::make_pair("PAPER-JAM", PRINTER_STATUS_PAPER_JAM));
+    map.insert(std::make_pair("PAPER-OUT", PRINTER_STATUS_PAPER_OUT));
+    map.insert(std::make_pair("PAPER-PROBLEM", PRINTER_STATUS_PAPER_PROBLEM));
+    map.insert(std::make_pair("PAUSED", PRINTER_STATUS_PAUSED));
+    map.insert(
+        std::make_pair("PENDING-DELETION", PRINTER_STATUS_PENDING_DELETION));
+    map.insert(std::make_pair("POWER-SAVE", PRINTER_STATUS_POWER_SAVE));
+    map.insert(std::make_pair("PRINTING", PRINTER_STATUS_PRINTING));
+    map.insert(std::make_pair("PROCESSING", PRINTER_STATUS_PROCESSING));
+    map.insert(std::make_pair("SERVER-OFFLINE", PRINTER_STATUS_SERVER_OFFLINE));
+    map.insert(std::make_pair("SERVER-UNKNOWN", PRINTER_STATUS_SERVER_UNKNOWN));
+    map.insert(std::make_pair("TONER-LOW", PRINTER_STATUS_TONER_LOW));
+    map.insert(
+        std::make_pair("USER-INTERVENTION", PRINTER_STATUS_USER_INTERVENTION));
+    map.insert(std::make_pair("WAITING", PRINTER_STATUS_WAITING));
+    map.insert(std::make_pair("WARMING-UP", PRINTER_STATUS_WARMING_UP));
+    return map;
+  }();
   return result;
 }
 
@@ -94,26 +93,26 @@ const StatusMapType &getStatusMap() {
 typedef std::map<DWORD, std::string> IppReasonMapType;
 
 const IppReasonMapType &getIppReasonMap() {
-  static IppReasonMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  result[PRINTER_STATUS_PAPER_JAM] = "media-jam";
-  result[PRINTER_STATUS_PAPER_OUT] = "media-empty";
-  result[PRINTER_STATUS_PAPER_PROBLEM] = "media-empty";
-  result[PRINTER_STATUS_MANUAL_FEED] = "media-needed";
-  result[PRINTER_STATUS_NO_TONER] = "toner-empty";
-  result[PRINTER_STATUS_TONER_LOW] = "toner-low";
-  result[PRINTER_STATUS_DOOR_OPEN] = "door-open";
-  result[PRINTER_STATUS_OUTPUT_BIN_FULL] = "output-area-full";
-  result[PRINTER_STATUS_OFFLINE] = "offline";
-  result[PRINTER_STATUS_NOT_AVAILABLE] = "offline";
-  result[PRINTER_STATUS_SERVER_OFFLINE] = "offline";
-  result[PRINTER_STATUS_PAUSED] = "paused";
-  result[PRINTER_STATUS_ERROR] = "other";
-  result[PRINTER_STATUS_USER_INTERVENTION] = "other";
-  result[PRINTER_STATUS_OUT_OF_MEMORY] = "other";
-  result[PRINTER_STATUS_PAGE_PUNT] = "other";
+  static const IppReasonMapType result = [] {
+    IppReasonMapType map;
+    map[PRINTER_STATUS_PAPER_JAM] = "media-jam";
+    map[PRINTER_STATUS_PAPER_OUT] = "media-empty";
+    map[PRINTER_STATUS_PAPER_PROBLEM] = "media-empty";
+    map[PRINTER_STATUS_MANUAL_FEED] = "media-needed";
+    map[PRINTER_STATUS_NO_TONER] = "toner-empty";
+    map[PRINTER_STATUS_TONER_LOW] = "toner-low";
+    map[PRINTER_STATUS_DOOR_OPEN] = "door-open";
+    map[PRINTER_STATUS_OUTPUT_BIN_FULL] = "output-area-full";
+    map[PRINTER_STATUS_OFFLINE] = "offline";
+    map[PRINTER_STATUS_NOT_AVAILABLE] = "offline";
+    map[PRINTER_STATUS_SERVER_OFFLINE] = "offline";
+    map[PRINTER_STATUS_PAUSED] = "paused";
+    map[PRINTER_STATUS_ERROR] = "other";
+    map[PRINTER_STATUS_USER_INTERVENTION] = "other";
+    map[PRINTER_STATUS_OUT_OF_MEMORY] = "other";
+    map[PRINTER_STATUS_PAGE_PUNT] = "other";
+    return map;
+  }();
   return result;
 }
 
@@ -140,80 +139,77 @@ std::u16string getDefaultPrinterNameUtf16() {
 }
 
 const StatusMapType &getJobStatusMap() {
-  static StatusMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  // add only first time
-#define STATUS_PRINTER_ADD(value, type)                                        \
-  result.insert(std::make_pair(value, type))
-  // Common statuses
-  STATUS_PRINTER_ADD("PRINTING", JOB_STATUS_PRINTING);
-  STATUS_PRINTER_ADD("PRINTED", JOB_STATUS_PRINTED);
-  STATUS_PRINTER_ADD("PAUSED", JOB_STATUS_PAUSED);
+  static const StatusMapType result = [] {
+    StatusMapType map;
+    // Common statuses
+    map.insert(std::make_pair("PRINTING", JOB_STATUS_PRINTING));
+    map.insert(std::make_pair("PRINTED", JOB_STATUS_PRINTED));
+    map.insert(std::make_pair("PAUSED", JOB_STATUS_PAUSED));
 
-  // Specific statuses
-  STATUS_PRINTER_ADD("BLOCKED-DEVQ", JOB_STATUS_BLOCKED_DEVQ);
-  STATUS_PRINTER_ADD("DELETED", JOB_STATUS_DELETED);
-  STATUS_PRINTER_ADD("DELETING", JOB_STATUS_DELETING);
-  STATUS_PRINTER_ADD("ERROR", JOB_STATUS_ERROR);
-  STATUS_PRINTER_ADD("OFFLINE", JOB_STATUS_OFFLINE);
-  STATUS_PRINTER_ADD("PAPEROUT", JOB_STATUS_PAPEROUT);
-  STATUS_PRINTER_ADD("RESTART", JOB_STATUS_RESTART);
-  STATUS_PRINTER_ADD("SPOOLING", JOB_STATUS_SPOOLING);
-  STATUS_PRINTER_ADD("USER-INTERVENTION", JOB_STATUS_USER_INTERVENTION);
-  // XP and later
+    // Specific statuses
+    map.insert(std::make_pair("BLOCKED-DEVQ", JOB_STATUS_BLOCKED_DEVQ));
+    map.insert(std::make_pair("DELETED", JOB_STATUS_DELETED));
+    map.insert(std::make_pair("DELETING", JOB_STATUS_DELETING));
+    map.insert(std::make_pair("ERROR", JOB_STATUS_ERROR));
+    map.insert(std::make_pair("OFFLINE", JOB_STATUS_OFFLINE));
+    map.insert(std::make_pair("PAPEROUT", JOB_STATUS_PAPEROUT));
+    map.insert(std::make_pair("RESTART", JOB_STATUS_RESTART));
+    map.insert(std::make_pair("SPOOLING", JOB_STATUS_SPOOLING));
+    map.insert(
+        std::make_pair("USER-INTERVENTION", JOB_STATUS_USER_INTERVENTION));
+
+    // XP and later
 #ifdef JOB_STATUS_COMPLETE
-  STATUS_PRINTER_ADD("COMPLETE", JOB_STATUS_COMPLETE);
+    map.insert(std::make_pair("COMPLETE", JOB_STATUS_COMPLETE));
 #endif
 #ifdef JOB_STATUS_RETAINED
-  STATUS_PRINTER_ADD("RETAINED", JOB_STATUS_RETAINED);
+    map.insert(std::make_pair("RETAINED", JOB_STATUS_RETAINED));
 #endif
 
-#undef STATUS_PRINTER_ADD
+    return map;
+  }();
   return result;
 }
 
 const StatusMapType &getAttributeMap() {
-  static StatusMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  // add only first time
-#define ATTRIBUTE_PRINTER_ADD(value, type)                                     \
-  result.insert(std::make_pair(value, type))
-  ATTRIBUTE_PRINTER_ADD("DIRECT", PRINTER_ATTRIBUTE_DIRECT);
-  ATTRIBUTE_PRINTER_ADD("DO-COMPLETE-FIRST",
-                        PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST);
-  ATTRIBUTE_PRINTER_ADD("ENABLE-BIDI", PRINTER_ATTRIBUTE_ENABLE_BIDI);
-  ATTRIBUTE_PRINTER_ADD("ENABLE-DEVQ", PRINTER_ATTRIBUTE_ENABLE_DEVQ);
-  ATTRIBUTE_PRINTER_ADD("HIDDEN", PRINTER_ATTRIBUTE_HIDDEN);
-  ATTRIBUTE_PRINTER_ADD("KEEPPRINTEDJOBS", PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS);
-  ATTRIBUTE_PRINTER_ADD("LOCAL", PRINTER_ATTRIBUTE_LOCAL);
-  ATTRIBUTE_PRINTER_ADD("NETWORK", PRINTER_ATTRIBUTE_NETWORK);
-  ATTRIBUTE_PRINTER_ADD("PUBLISHED", PRINTER_ATTRIBUTE_PUBLISHED);
-  ATTRIBUTE_PRINTER_ADD("QUEUED", PRINTER_ATTRIBUTE_QUEUED);
-  ATTRIBUTE_PRINTER_ADD("RAW-ONLY", PRINTER_ATTRIBUTE_RAW_ONLY);
-  ATTRIBUTE_PRINTER_ADD("SHARED", PRINTER_ATTRIBUTE_SHARED);
-  ATTRIBUTE_PRINTER_ADD("OFFLINE", PRINTER_ATTRIBUTE_WORK_OFFLINE);
-  // XP
+  static const StatusMapType result = [] {
+    StatusMapType map;
+    map.insert(std::make_pair("DIRECT", PRINTER_ATTRIBUTE_DIRECT));
+    map.insert(std::make_pair("DO-COMPLETE-FIRST",
+                              PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST));
+    map.insert(std::make_pair("ENABLE-BIDI", PRINTER_ATTRIBUTE_ENABLE_BIDI));
+    map.insert(std::make_pair("ENABLE-DEVQ", PRINTER_ATTRIBUTE_ENABLE_DEVQ));
+    map.insert(std::make_pair("HIDDEN", PRINTER_ATTRIBUTE_HIDDEN));
+    map.insert(
+        std::make_pair("KEEPPRINTEDJOBS", PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS));
+    map.insert(std::make_pair("LOCAL", PRINTER_ATTRIBUTE_LOCAL));
+    map.insert(std::make_pair("NETWORK", PRINTER_ATTRIBUTE_NETWORK));
+    map.insert(std::make_pair("PUBLISHED", PRINTER_ATTRIBUTE_PUBLISHED));
+    map.insert(std::make_pair("QUEUED", PRINTER_ATTRIBUTE_QUEUED));
+    map.insert(std::make_pair("RAW-ONLY", PRINTER_ATTRIBUTE_RAW_ONLY));
+    map.insert(std::make_pair("SHARED", PRINTER_ATTRIBUTE_SHARED));
+    map.insert(std::make_pair("OFFLINE", PRINTER_ATTRIBUTE_WORK_OFFLINE));
+    // XP
 #ifdef PRINTER_ATTRIBUTE_FAX
-  ATTRIBUTE_PRINTER_ADD("FAX", PRINTER_ATTRIBUTE_FAX);
+    map.insert(std::make_pair("FAX", PRINTER_ATTRIBUTE_FAX));
 #endif
-  // vista
+    // vista
 #ifdef PRINTER_ATTRIBUTE_FRIENDLY_NAME
-  ATTRIBUTE_PRINTER_ADD("FRIENDLY-NAME", PRINTER_ATTRIBUTE_FRIENDLY_NAME);
-  ATTRIBUTE_PRINTER_ADD("MACHINE", PRINTER_ATTRIBUTE_MACHINE);
-  ATTRIBUTE_PRINTER_ADD("PUSHED-USER", PRINTER_ATTRIBUTE_PUSHED_USER);
-  ATTRIBUTE_PRINTER_ADD("PUSHED-MACHINE", PRINTER_ATTRIBUTE_PUSHED_MACHINE);
-  ATTRIBUTE_PRINTER_ADD("TS_GENERIC_DRIVER",
-                        PRINTER_ATTRIBUTE_TS_GENERIC_DRIVER);
+    map.insert(
+        std::make_pair("FRIENDLY-NAME", PRINTER_ATTRIBUTE_FRIENDLY_NAME));
+    map.insert(std::make_pair("MACHINE", PRINTER_ATTRIBUTE_MACHINE));
+    map.insert(std::make_pair("PUSHED-USER", PRINTER_ATTRIBUTE_PUSHED_USER));
+    map.insert(
+        std::make_pair("PUSHED-MACHINE", PRINTER_ATTRIBUTE_PUSHED_MACHINE));
+    map.insert(std::make_pair("TS_GENERIC_DRIVER",
+                              PRINTER_ATTRIBUTE_TS_GENERIC_DRIVER));
 #endif
-  // server 2003
+    // server 2003
 #ifdef PRINTER_ATTRIBUTE_TS
-  ATTRIBUTE_PRINTER_ADD("TS", PRINTER_ATTRIBUTE_TS);
+    map.insert(std::make_pair("TS", PRINTER_ATTRIBUTE_TS));
 #endif
-#undef ATTRIBUTE_PRINTER_ADD
+    return map;
+  }();
   return result;
 }
 

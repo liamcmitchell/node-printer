@@ -17,12 +17,7 @@ npm install github:liamcmitchell/node-printer
 ```
 
 ```js
-import {
-  getAllPrinterDetails,
-  getDefaultPrinterName,
-  print,
-  getJob,
-} from "node-printer";
+import { getAllPrinterDetails, getDefaultPrinterName, print, getJob } from "node-printer";
 
 console.log(await getAllPrinterDetails());
 const printer = await getDefaultPrinterName();

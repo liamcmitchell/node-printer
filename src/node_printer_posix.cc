@@ -15,45 +15,46 @@ typedef std::map<std::string, int> StatusMapType;
 typedef std::map<std::string, std::string> FormatMapType;
 
 const StatusMapType &getJobStatusMap() {
-  static StatusMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-#define STATUS_PRINTER_ADD(value, type)                                        \
-  result.insert(std::make_pair(value, type))
-  STATUS_PRINTER_ADD("pending", IPP_JOB_PENDING);
-  STATUS_PRINTER_ADD("pending-held", IPP_JOB_HELD);
-  STATUS_PRINTER_ADD("processing", IPP_JOB_PROCESSING);
-  STATUS_PRINTER_ADD("processing-stopped", IPP_JOB_STOPPED);
-  STATUS_PRINTER_ADD("canceled", IPP_JOB_CANCELLED);
-  STATUS_PRINTER_ADD("aborted", IPP_JOB_ABORTED);
-  STATUS_PRINTER_ADD("completed", IPP_JOB_COMPLETED);
-#undef STATUS_PRINTER_ADD
+  // Function-local statics are guaranteed by C++11 to be initialized exactly
+  // once even if multiple libuv worker threads call this concurrently.
+  // The previous check-then-fill pattern (static map + `if (!empty())`)
+  // raced when two threads made their first call at the same time.
+  static const StatusMapType result = [] {
+    StatusMapType map;
+    map.insert(std::make_pair("pending", IPP_JOB_PENDING));
+    map.insert(std::make_pair("pending-held", IPP_JOB_HELD));
+    map.insert(std::make_pair("processing", IPP_JOB_PROCESSING));
+    map.insert(std::make_pair("processing-stopped", IPP_JOB_STOPPED));
+    map.insert(std::make_pair("canceled", IPP_JOB_CANCELLED));
+    map.insert(std::make_pair("aborted", IPP_JOB_ABORTED));
+    map.insert(std::make_pair("completed", IPP_JOB_COMPLETED));
+    return map;
+  }();
   return result;
 }
 
 const FormatMapType &getPrinterFormatMap() {
-  static FormatMapType result;
-  if (!result.empty()) {
-    return result;
-  }
-  result.insert(std::make_pair("RAW", CUPS_FORMAT_RAW));
-  result.insert(std::make_pair("TEXT", CUPS_FORMAT_TEXT));
+  static const FormatMapType result = [] {
+    FormatMapType map;
+    map.insert(std::make_pair("RAW", CUPS_FORMAT_RAW));
+    map.insert(std::make_pair("TEXT", CUPS_FORMAT_TEXT));
 #ifdef CUPS_FORMAT_PDF
-  result.insert(std::make_pair("PDF", CUPS_FORMAT_PDF));
+    map.insert(std::make_pair("PDF", CUPS_FORMAT_PDF));
 #endif
 #ifdef CUPS_FORMAT_JPEG
-  result.insert(std::make_pair("JPEG", CUPS_FORMAT_JPEG));
+    map.insert(std::make_pair("JPEG", CUPS_FORMAT_JPEG));
 #endif
 #ifdef CUPS_FORMAT_POSTSCRIPT
-  result.insert(std::make_pair("POSTSCRIPT", CUPS_FORMAT_POSTSCRIPT));
+    map.insert(std::make_pair("POSTSCRIPT", CUPS_FORMAT_POSTSCRIPT));
 #endif
 #ifdef CUPS_FORMAT_COMMAND
-  result.insert(std::make_pair("COMMAND", CUPS_FORMAT_COMMAND));
+    map.insert(std::make_pair("COMMAND", CUPS_FORMAT_COMMAND));
 #endif
 #ifdef CUPS_FORMAT_AUTO
-  result.insert(std::make_pair("AUTO", CUPS_FORMAT_AUTO));
+    map.insert(std::make_pair("AUTO", CUPS_FORMAT_AUTO));
 #endif
+    return map;
+  }();
   return result;
 }
 
