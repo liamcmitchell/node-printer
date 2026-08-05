@@ -1,3 +1,3 @@
-import { getPrinters } from "../lib/index.js";
+import { getAllPrinterDetails } from "../lib/index.js";
 
-console.log("installed printers:", getPrinters());
+console.log("installed printers:", await getAllPrinterDetails());

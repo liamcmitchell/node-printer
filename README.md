@@ -17,17 +17,22 @@ npm install github:liamcmitchell/node-printer
 ```
 
 ```js
-import { getPrinters, print, getJob } from "node-printer";
+import {
+  getAllPrinterDetails,
+  getDefaultPrinterName,
+  print,
+  getJob,
+} from "node-printer";
 
-const printers = getPrinters();
-const printer = printers.find((p) => p.isDefault)?.name;
+console.log(await getAllPrinterDetails());
+const printer = await getDefaultPrinterName();
 if (printer) {
-  const jobId = print({
+  const jobId = await print({
     printer,
     format: "TEXT",
     data: "Text",
   });
-  console.log(getJob(printer, jobId));
+  console.log(await getJob(printer, jobId));
 }
 ```
 
@@ -65,11 +70,17 @@ interface JobDetails {
   raw: Record<string, any>; // platform-specific data
 }
 
-// Get all printers
-function getPrinters(): PrinterDetails[];
+// Get all printers with details
+function getAllPrinterDetails(): Promise<PrinterDetails[]>;
 
-// Get specific printer, or null if it does not exist
-function getPrinter(printer: string): PrinterDetails | null;
+// Get specific printer details, or null if it does not exist
+function getPrinterDetails(printer: string): Promise<PrinterDetails | null>;
+
+// Returns true if a printer exists
+function hasPrinter(printer: string): Promise<boolean>;
+
+// Get the default printer name, or null if no default is configured
+function getDefaultPrinterName(): Promise<string | null>;
 
 // Send data or a file to a printer, returns the job ID
 function print(options: {
@@ -79,16 +90,16 @@ function print(options: {
   filename?: string; // path to file (POSIX only, alternative to data)
   docname?: string; // document name shown in the queue
   options?: Record<string, string>; // platform-specific print options
-}): number;
+}): Promise<number>;
 
 // Get job details, or null if the job no longer exists
-function getJob(printer: string, jobId: number): JobDetails | null;
+function getJob(printer: string, jobId: number): Promise<JobDetails | null>;
 
 // Cancel a print job; no-op if the job no longer exists
-function cancelJob(printer: string, jobId: number): void;
+function cancelJob(printer: string, jobId: number): Promise<void>;
 
 // Returns the built-in format aliases accepted by the format option
-function getSupportedPrintFormats(): string[];
+function getSupportedPrintFormats(): Promise<string[]>;
 ```
 
 ### Print formats

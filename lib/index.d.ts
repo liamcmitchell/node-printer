@@ -1,9 +1,11 @@
-export function getPrinters(): PrinterDetails[];
-export function getPrinter(printer: string): PrinterDetails | null;
-export function print(options: PrintOptions): number;
-export function getSupportedPrintFormats(): string[];
-export function getJob(printer: string, jobId: number): JobDetails | null;
-export function cancelJob(printer: string, jobId: number): void;
+export function getAllPrinterDetails(): Promise<PrinterDetails[]>;
+export function getPrinterDetails(printer: string): Promise<PrinterDetails | null>;
+export function hasPrinter(printer: string): Promise<boolean>;
+export function getDefaultPrinterName(): Promise<string | null>;
+export function print(options: PrintOptions): Promise<number>;
+export function getSupportedPrintFormats(): Promise<string[]>;
+export function getJob(printer: string, jobId: number): Promise<JobDetails | null>;
+export function cancelJob(printer: string, jobId: number): Promise<void>;
 
 export interface PrintOptions {
   printer: string;

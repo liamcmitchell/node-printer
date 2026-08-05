@@ -15,14 +15,14 @@
     "type": "git",
     "url": "git://github.com/liamcmitchell/node-printer.git"
   },
-  "type": "module",
-  "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
   "files": [
     "lib/",
     "src/",
     "binding.gyp"
   ],
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",

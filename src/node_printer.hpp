@@ -5,6 +5,25 @@
 
 #include <string>
 
+/** Base class for async workers that resolve/reject a JS Promise.
+ * Subclasses just need to implement Execute() and OnOK() (calling
+ * deferred_.Resolve(...) with the result).
+ */
+class PromiseWorker : public Napi::AsyncWorker {
+public:
+  explicit PromiseWorker(Napi::Env env)
+      : Napi::AsyncWorker(env), deferred_(Napi::Promise::Deferred::New(env)) {}
+
+  Napi::Promise GetPromise() { return deferred_.Promise(); }
+
+protected:
+  void OnError(const Napi::Error &error) override {
+    deferred_.Reject(error.Value());
+  }
+
+  Napi::Promise::Deferred deferred_;
+};
+
 /**
  * Send data to printer
  *
@@ -28,15 +47,21 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs);
  */
 Napi::Value PrintFile(const Napi::CallbackInfo &iArgs);
 
-/** Retrieve all printers and jobs
- * posix: minimum version: CUPS 1.1.21/OS X 10.4
- */
-Napi::Value getPrinters(const Napi::CallbackInfo &iArgs);
+/** Async retrieve all printers and jobs */
+Napi::Value getAllPrinterDetails(const Napi::CallbackInfo &iArgs);
 
-/** Retrieve printer info and jobs
+/** Async retrieve printer info and jobs
  * @param printer name String
  */
-Napi::Value getPrinter(const Napi::CallbackInfo &iArgs);
+Napi::Value getPrinterDetails(const Napi::CallbackInfo &iArgs);
+
+/** Check if a printer exists
+ * @param printer name String
+ */
+Napi::Value hasPrinter(const Napi::CallbackInfo &iArgs);
+
+/** Retrieve default printer name, or null if no default is configured */
+Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs);
 
 /** Retrieve job info
  * @param printer name String

@@ -6,6 +6,7 @@
 #endif
 
 #include "node_printer.hpp"
+#include "printer_model.hpp"
 
 #include <map>
 #include <node_version.h>
@@ -18,6 +19,8 @@
 
 namespace {
 typedef std::map<std::string, DWORD> StatusMapType;
+
+std::string getLastErrorCodeAndMessage();
 
 struct FreeDeleter {
   void operator()(void *p) const { ::free(p); }
@@ -125,7 +128,7 @@ const DWORD kStoppedMask =
     PRINTER_STATUS_PAGE_PUNT;
 
 /// Get the system default printer name (UTF-16)
-std::u16string getDefaultPrinterName() {
+std::u16string getDefaultPrinterNameUtf16() {
   DWORD size = 0;
   GetDefaultPrinterW(NULL, &size);
   if (size == 0)
@@ -241,106 +244,562 @@ const char *jobStatusToIppState(DWORD status) {
     return "completed";
   if (status & JOB_STATUS_PRINTING)
     return "processing";
-  if (status & (JOB_STATUS_PAUSED | JOB_STATUS_BLOCKED_DEVQ |
-                JOB_STATUS_OFFLINE | JOB_STATUS_PAPEROUT |
-                JOB_STATUS_USER_INTERVENTION))
+  if (status &
+      (JOB_STATUS_PAUSED | JOB_STATUS_BLOCKED_DEVQ | JOB_STATUS_OFFLINE |
+       JOB_STATUS_PAPEROUT | JOB_STATUS_USER_INTERVENTION))
     return "processing-stopped";
   if (status & JOB_STATUS_SPOOLING)
     return "pending";
   return "pending";
 }
 
-void parseJobObject(JOB_INFO_2W *job, Napi::Object result_printer_job) {
-  Napi::Env env = result_printer_job.Env();
-  auto wstrToNapi = [&](LPCWSTR value) -> Napi::String {
-    return Napi::String::New(env, reinterpret_cast<const char16_t *>(value));
-  };
-
-  // --- Standardized fields ---
-  result_printer_job.Set(Napi::String::New(env, "id"),
-                         Napi::Number::New(env, job->JobId));
-
-  // name = document name (pDocument), not printer name
-  if (job->pDocument && *job->pDocument != L'\0') {
-    result_printer_job.Set(Napi::String::New(env, "name"),
-                           wstrToNapi(job->pDocument));
-  } else {
-    result_printer_job.Set(Napi::String::New(env, "name"),
-                           Napi::String::New(env, ""));
+std::string wstrToUtf8(LPCWSTR value) {
+  if (!value || *value == L'\0') {
+    return std::string();
   }
-
-  if (job->pPrinterName && *job->pPrinterName != L'\0') {
-    result_printer_job.Set(Napi::String::New(env, "printerName"),
-                           wstrToNapi(job->pPrinterName));
+  int required =
+      WideCharToMultiByte(CP_UTF8, 0, value, -1, NULL, 0, NULL, NULL);
+  if (required <= 1) {
+    return std::string();
   }
+  std::string out(static_cast<size_t>(required - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value, -1, out.data(), required, NULL, NULL);
+  return out;
+}
 
-  if (job->pUserName && *job->pUserName != L'\0') {
-    result_printer_job.Set(Napi::String::New(env, "user"),
-                           wstrToNapi(job->pUserName));
-  } else {
-    result_printer_job.Set(Napi::String::New(env, "user"),
-                           Napi::String::New(env, ""));
-  }
+using JobData = printer_model::JobModel;
+using PrinterData = printer_model::PrinterModel;
 
-  result_printer_job.Set(Napi::String::New(env, "size"),
-                         Napi::Number::New(env, job->Size));
+JobData parseJobData(const JOB_INFO_2W *job) {
+  JobData out;
+  out.id = static_cast<int>(job->JobId);
+  out.name = wstrToUtf8(job->pDocument);
+  out.printerName = wstrToUtf8(job->pPrinterName);
+  out.user = wstrToUtf8(job->pUserName);
+  out.state = jobStatusToIppState(job->Status);
+  out.size = static_cast<double>(job->Size);
+  out.createdAt = systemTimeToEpoch(job->Submitted);
+  out.processingAt = 0;
+  out.completedAt = 0;
 
-  // state (IPP job-state keyword)
-  result_printer_job.Set(Napi::String::New(env, "state"),
-                         Napi::String::New(env, jobStatusToIppState(job->Status)));
-
-  // Timestamps as epoch seconds
-  double createdAt = systemTimeToEpoch(job->Submitted);
-  result_printer_job.Set(Napi::String::New(env, "createdAt"),
-                         Napi::Number::New(env, createdAt));
-  result_printer_job.Set(Napi::String::New(env, "processingAt"),
-                         Napi::Number::New(env, 0.0));
-  result_printer_job.Set(Napi::String::New(env, "completedAt"),
-                         Napi::Number::New(env, 0.0));
-
-  // --- Platform-specific raw ---
-  Napi::Object raw = Napi::Object::New(env);
-
-  // Raw status strings
-  Napi::Array raw_status = Napi::Array::New(env);
-  int i_status = 0;
+  std::vector<std::string> status;
   for (auto &entry : getJobStatusMap()) {
     if (job->Status & entry.second) {
-      raw_status.Set(i_status++,
-                     Napi::String::New(env, entry.first.c_str()));
+      status.push_back(entry.first);
     }
   }
   if (job->pStatus && *job->pStatus != L'\0') {
-    raw_status.Set(i_status++, wstrToNapi(job->pStatus));
+    status.push_back(wstrToUtf8(job->pStatus));
   }
-  raw.Set(Napi::String::New(env, "status"), raw_status);
-  raw.Set(Napi::String::New(env, "statusNumber"),
-          Napi::Number::New(env, job->Status));
-
+  out.raw["status"] =
+      printer_model::RawValue::FromStringArray(std::move(status));
+  out.raw["statusNumber"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->Status));
   if (job->pDatatype && *job->pDatatype != L'\0') {
-    raw.Set(Napi::String::New(env, "datatype"), wstrToNapi(job->pDatatype));
+    out.raw["datatype"] =
+        printer_model::RawValue::FromString(wstrToUtf8(job->pDatatype));
   }
-  raw.Set(Napi::String::New(env, "priority"),
-          Napi::Number::New(env, job->Priority));
-  raw.Set(Napi::String::New(env, "position"),
-          Napi::Number::New(env, job->Position));
-  raw.Set(Napi::String::New(env, "totalPages"),
-          Napi::Number::New(env, job->TotalPages));
-  raw.Set(Napi::String::New(env, "pagesPrinted"),
-          Napi::Number::New(env, job->PagesPrinted));
-
-  auto addRawString = [&](const char *name, LPCWSTR value) {
-    if (value && *value != L'\0') {
-      raw.Set(name, wstrToNapi(value));
-    }
-  };
-  addRawString("machineName", job->pMachineName);
-  addRawString("driverName", job->pDriverName);
-  addRawString("printProcessor", job->pPrintProcessor);
-  addRawString("notifyName", job->pNotifyName);
-
-  result_printer_job.Set(Napi::String::New(env, "raw"), raw);
+  out.raw["priority"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->Priority));
+  out.raw["position"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->Position));
+  out.raw["totalPages"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->TotalPages));
+  out.raw["pagesPrinted"] = printer_model::RawValue::FromNumber(
+      static_cast<double>(job->PagesPrinted));
+  if (job->pMachineName && *job->pMachineName != L'\0') {
+    out.raw["machineName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(job->pMachineName));
+  }
+  if (job->pDriverName && *job->pDriverName != L'\0') {
+    out.raw["driverName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(job->pDriverName));
+  }
+  if (job->pPrintProcessor && *job->pPrintProcessor != L'\0') {
+    out.raw["printProcessor"] =
+        printer_model::RawValue::FromString(wstrToUtf8(job->pPrintProcessor));
+  }
+  if (job->pNotifyName && *job->pNotifyName != L'\0') {
+    out.raw["notifyName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(job->pNotifyName));
+  }
+  return out;
 }
+
+std::string retrieveJobsData(const DWORD totalJobs,
+                             PrinterHandle &printerHandle,
+                             std::vector<JobData> &outJobs) {
+  DWORD bytes_needed = 0, jobs_count = 0;
+  EnumJobsW(*printerHandle, 0, totalJobs, 2, NULL, bytes_needed, &bytes_needed,
+            &jobs_count);
+  auto jobs = mallocValue<JOB_INFO_2W>(bytes_needed);
+  if (!jobs) {
+    return "Failed to allocate memory for jobs";
+  }
+  DWORD dummy_bytes = 0;
+  BOOL ok = EnumJobsW(*printerHandle, 0, totalJobs, 2, (LPBYTE)jobs.get(),
+                      bytes_needed, &dummy_bytes, &jobs_count);
+  if (!ok) {
+    std::string error_str("EnumJobsW failed: ");
+    error_str += getLastErrorCodeAndMessage();
+    return error_str;
+  }
+  JOB_INFO_2W *job = jobs.get();
+  for (DWORD i = 0; i < jobs_count; ++i, ++job) {
+    outJobs.push_back(parseJobData(job));
+  }
+  return "";
+}
+
+std::string parsePrinterData(const PRINTER_INFO_2W *printer,
+                             PrinterHandle &printerHandle,
+                             const std::u16string &defaultName,
+                             PrinterData &out) {
+  out.name = wstrToUtf8(printer->pPrinterName);
+  out.isDefault = (printer->pPrinterName != nullptr) &&
+                  (defaultName ==
+                   reinterpret_cast<const char16_t *>(printer->pPrinterName));
+
+  if (printer->Status & (PRINTER_STATUS_PRINTING | PRINTER_STATUS_PROCESSING)) {
+    out.state = "processing";
+  } else if (printer->Status & kStoppedMask) {
+    out.state = "stopped";
+  }
+
+  if (printer->Status == 0) {
+    out.stateReasons.push_back("none");
+  } else {
+    for (auto &entry : getIppReasonMap()) {
+      if (printer->Status & entry.first) {
+        out.stateReasons.push_back(entry.second);
+      }
+    }
+    if (out.stateReasons.empty()) {
+      out.stateReasons.push_back("none");
+    }
+  }
+
+  if (printer->cJobs > 0) {
+    std::string error =
+        retrieveJobsData(printer->cJobs, printerHandle, out.jobs);
+    if (!error.empty()) {
+      return error;
+    }
+  }
+
+  if (printer->pServerName && *printer->pServerName != L'\0') {
+    out.raw["serverName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pServerName));
+  }
+  if (printer->pShareName && *printer->pShareName != L'\0') {
+    out.raw["shareName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pShareName));
+  }
+  if (printer->pPortName && *printer->pPortName != L'\0') {
+    out.raw["portName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pPortName));
+  }
+  if (printer->pDriverName && *printer->pDriverName != L'\0') {
+    out.raw["driverName"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pDriverName));
+  }
+  if (printer->pComment && *printer->pComment != L'\0') {
+    out.raw["comment"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pComment));
+  }
+  if (printer->pLocation && *printer->pLocation != L'\0') {
+    out.raw["location"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pLocation));
+  }
+  if (printer->pSepFile && *printer->pSepFile != L'\0') {
+    out.raw["sepFile"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pSepFile));
+  }
+  if (printer->pPrintProcessor && *printer->pPrintProcessor != L'\0') {
+    out.raw["printProcessor"] = printer_model::RawValue::FromString(
+        wstrToUtf8(printer->pPrintProcessor));
+  }
+  if (printer->pDatatype && *printer->pDatatype != L'\0') {
+    out.raw["datatype"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pDatatype));
+  }
+  if (printer->pParameters && *printer->pParameters != L'\0') {
+    out.raw["parameters"] =
+        printer_model::RawValue::FromString(wstrToUtf8(printer->pParameters));
+  }
+
+  std::vector<std::string> rawStatus;
+  for (auto &entry : getStatusMap()) {
+    if (printer->Status & entry.second) {
+      rawStatus.push_back(entry.first);
+    }
+  }
+  out.raw["status"] =
+      printer_model::RawValue::FromStringArray(std::move(rawStatus));
+  out.raw["statusNumber"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(printer->Status));
+
+  std::vector<std::string> rawAttributes;
+  for (auto &entry : getAttributeMap()) {
+    if (printer->Attributes & entry.second) {
+      rawAttributes.push_back(entry.first);
+    }
+  }
+  out.raw["attributes"] =
+      printer_model::RawValue::FromStringArray(std::move(rawAttributes));
+
+  out.raw["priority"] = printer_model::RawValue::FromNumber(
+      static_cast<double>(printer->Priority));
+  out.raw["defaultPriority"] = printer_model::RawValue::FromNumber(
+      static_cast<double>(printer->DefaultPriority));
+  out.raw["averagePPM"] = printer_model::RawValue::FromNumber(
+      static_cast<double>(printer->AveragePPM));
+  if (printer->StartTime > 0) {
+    out.raw["startTime"] = printer_model::RawValue::FromNumber(
+        static_cast<double>(printer->StartTime));
+  }
+  if (printer->UntilTime > 0) {
+    out.raw["untilTime"] = printer_model::RawValue::FromNumber(
+        static_cast<double>(printer->UntilTime));
+  }
+  return "";
+}
+
+class GetAllPrinterDetailsWorker : public PromiseWorker {
+public:
+  explicit GetAllPrinterDetailsWorker(Napi::Env env) : PromiseWorker(env) {}
+
+  void Execute() override {
+    DWORD printers_size = 0;
+    DWORD printers_size_bytes = 0, dummyBytes = 0;
+    DWORD flags = PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS;
+    EnumPrintersW(flags, NULL, 2, NULL, 0, &printers_size_bytes,
+                  &printers_size);
+    auto printers = mallocValue<PRINTER_INFO_2W>(printers_size_bytes);
+    if (!printers) {
+      SetError("Failed to allocate memory for printers");
+      return;
+    }
+    BOOL ok = EnumPrintersW(flags, NULL, 2, (LPBYTE)printers.get(),
+                            printers_size_bytes, &dummyBytes, &printers_size);
+    if (!ok) {
+      std::string err("EnumPrintersW failed: ");
+      err += getLastErrorCodeAndMessage();
+      SetError(err);
+      return;
+    }
+    std::u16string defaultName = getDefaultPrinterNameUtf16();
+    PRINTER_INFO_2W *printer = printers.get();
+    for (DWORD i = 0; i < printers_size; ++i, ++printer) {
+      PrinterHandle handle((LPWSTR)printer->pPrinterName);
+      if (!handle) {
+        continue;
+      }
+      PrinterData out;
+      std::string err = parsePrinterData(printer, handle, defaultName, out);
+      if (!err.empty()) {
+        SetError(err);
+        return;
+      }
+      result_.push_back(std::move(out));
+    }
+  }
+
+  void OnOK() override {
+    Napi::Array arr = Napi::Array::New(Env(), result_.size());
+    for (size_t i = 0; i < result_.size(); ++i) {
+      arr.Set(static_cast<uint32_t>(i),
+              printer_model::SerializePrinterModel(Env(), result_[i]));
+    }
+    deferred_.Resolve(arr);
+  }
+
+private:
+  std::vector<PrinterData> result_;
+};
+
+class GetPrinterDetailsWorker : public PromiseWorker {
+public:
+  GetPrinterDetailsWorker(Napi::Env env, std::u16string printerName)
+      : PromiseWorker(env), printerName_(std::move(printerName)) {}
+
+  void Execute() override {
+    PrinterHandle handle(
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printerName_.c_str())));
+    if (!handle) {
+      found_ = false;
+      return;
+    }
+    DWORD size = 0;
+    GetPrinterW(*handle, 2, NULL, size, &size);
+    auto printer = mallocValue<PRINTER_INFO_2W>(size);
+    if (!printer) {
+      SetError("Failed to allocate memory for printers");
+      return;
+    }
+    BOOL ok = GetPrinterW(*handle, 2, (LPBYTE)printer.get(), size, &size);
+    if (!ok) {
+      std::string err("GetPrinterW failed: ");
+      err += getLastErrorCodeAndMessage();
+      SetError(err);
+      return;
+    }
+    std::u16string defaultName = getDefaultPrinterNameUtf16();
+    std::string err =
+        parsePrinterData(printer.get(), handle, defaultName, result_);
+    if (!err.empty()) {
+      SetError(err);
+      return;
+    }
+    found_ = true;
+  }
+
+  void OnOK() override {
+    if (!found_) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(printer_model::SerializePrinterModel(Env(), result_));
+  }
+
+private:
+  std::u16string printerName_;
+  bool found_ = false;
+  PrinterData result_;
+};
+
+class HasPrinterWorker : public PromiseWorker {
+public:
+  HasPrinterWorker(Napi::Env env, std::u16string printerName)
+      : PromiseWorker(env), printerName_(std::move(printerName)) {}
+
+  void Execute() override {
+    PrinterHandle handle(
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printerName_.c_str())));
+    exists_ = static_cast<bool>(handle);
+  }
+
+  void OnOK() override {
+    deferred_.Resolve(Napi::Boolean::New(Env(), exists_));
+  }
+
+private:
+  std::u16string printerName_;
+  bool exists_ = false;
+};
+
+class GetDefaultPrinterNameWorker : public PromiseWorker {
+public:
+  explicit GetDefaultPrinterNameWorker(Napi::Env env) : PromiseWorker(env) {}
+
+  void Execute() override { defaultName_ = getDefaultPrinterNameUtf16(); }
+
+  void OnOK() override {
+    if (defaultName_.empty()) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(Napi::String::New(Env(), defaultName_));
+  }
+
+private:
+  std::u16string defaultName_;
+};
+
+class GetJobWorker : public PromiseWorker {
+public:
+  GetJobWorker(Napi::Env env, std::u16string printerName, int jobId)
+      : PromiseWorker(env), printerName_(std::move(printerName)),
+        jobId_(jobId) {}
+
+  void Execute() override {
+    PrinterHandle handle(
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printerName_.c_str())));
+    if (!handle) {
+      std::string error_str("OpenPrinterW failed: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+    DWORD size_bytes = 0, dummyBytes = 0;
+    GetJobW(*handle, static_cast<DWORD>(jobId_), 2, NULL, size_bytes,
+            &size_bytes);
+    auto job = mallocValue<JOB_INFO_2W>(size_bytes);
+    if (!job) {
+      SetError("Failed to allocate memory for printer job");
+      return;
+    }
+    BOOL ok = GetJobW(*handle, static_cast<DWORD>(jobId_), 2, (LPBYTE)job.get(),
+                      size_bytes, &dummyBytes);
+    if (!ok) {
+      found_ = false;
+      return;
+    }
+    found_ = true;
+    result_ = parseJobData(job.get());
+  }
+
+  void OnOK() override {
+    if (!found_) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(printer_model::SerializeJobModel(Env(), result_));
+  }
+
+private:
+  std::u16string printerName_;
+  int jobId_;
+  bool found_ = false;
+  JobData result_;
+};
+
+class CancelJobWorker : public PromiseWorker {
+public:
+  CancelJobWorker(Napi::Env env, std::u16string printerName, int jobId)
+      : PromiseWorker(env), printerName_(std::move(printerName)),
+        jobId_(jobId) {}
+
+  void Execute() override {
+    PrinterHandle handle(
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printerName_.c_str())));
+    if (!handle) {
+      std::string error_str("OpenPrinterW failed: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+    SetJobW(*handle, (DWORD)jobId_, 0, NULL, JOB_CONTROL_DELETE);
+  }
+
+  void OnOK() override { deferred_.Resolve(Env().Undefined()); }
+
+private:
+  std::u16string printerName_;
+  int jobId_;
+};
+
+class GetSupportedPrintFormatsWorker : public PromiseWorker {
+public:
+  explicit GetSupportedPrintFormatsWorker(Napi::Env env) : PromiseWorker(env) {}
+
+  void Execute() override {
+    DWORD numBytes = 0, processorsNum = 0;
+    LPWSTR nullVal = NULL;
+    EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(NULL), numBytes,
+                         &numBytes, &processorsNum);
+    auto processors = mallocValue<_PRINTPROCESSOR_INFO_1W>(numBytes);
+    BOOL isOK =
+        EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(processors.get()),
+                             numBytes, &numBytes, &processorsNum);
+    if (!isOK) {
+      std::string error_str("EnumPrintProcessorsW failed: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+
+    _PRINTPROCESSOR_INFO_1W *pProcessor = processors.get();
+    for (DWORD processor_i = 0; processor_i < processorsNum;
+         ++processor_i, ++pProcessor) {
+      numBytes = 0;
+      DWORD dataTypesNum = 0;
+      EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1,
+                                   (LPBYTE)(NULL), numBytes, &numBytes,
+                                   &dataTypesNum);
+      auto dataTypes = mallocValue<_DATATYPES_INFO_1W>(numBytes);
+      isOK = EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1,
+                                          (LPBYTE)(dataTypes.get()), numBytes,
+                                          &numBytes, &dataTypesNum);
+      if (!isOK) {
+        std::string error_str("EnumPrintProcessorDatatypesW failed: ");
+        error_str += getLastErrorCodeAndMessage();
+        SetError(error_str);
+        return;
+      }
+      _DATATYPES_INFO_1W *pDataType = dataTypes.get();
+      for (DWORD j = 0; j < dataTypesNum; ++j, ++pDataType) {
+        formats_.push_back(wstrToUtf8(pDataType->pName));
+      }
+    }
+  }
+
+  void OnOK() override {
+    Napi::Array result = Napi::Array::New(Env(), formats_.size());
+    for (size_t i = 0; i < formats_.size(); ++i) {
+      result.Set(static_cast<uint32_t>(i),
+                 Napi::String::New(Env(), formats_[i]));
+    }
+    deferred_.Resolve(result);
+  }
+
+private:
+  std::vector<std::string> formats_;
+};
+
+class PrintDirectWorker : public PromiseWorker {
+public:
+  PrintDirectWorker(Napi::Env env, std::string data, std::u16string printerName,
+                    std::u16string docName, std::u16string type)
+      : PromiseWorker(env), data_(std::move(data)),
+        printerName_(std::move(printerName)), docName_(std::move(docName)),
+        type_(std::move(type)) {}
+
+  void Execute() override {
+    PrinterHandle handle(
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printerName_.c_str())));
+    if (!handle) {
+      std::string error_str("OpenPrinterW failed: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+
+    DOC_INFO_1W docInfo;
+    docInfo.pDocName =
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(docName_.c_str()));
+    docInfo.pOutputFile = NULL;
+    docInfo.pDatatype =
+        reinterpret_cast<LPWSTR>(const_cast<char16_t *>(type_.c_str()));
+
+    DWORD job = StartDocPrinterW(*handle, 1, (LPBYTE)&docInfo);
+    if (job == 0) {
+      std::string error_str("StartDocPrinterW error: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+
+    BOOL status = StartPagePrinter(*handle);
+    if (!status) {
+      EndDocPrinter(*handle);
+      std::string error_str("StartPagePrinter error: ");
+      error_str += getLastErrorCodeAndMessage();
+      SetError(error_str);
+      return;
+    }
+
+    DWORD bytesWritten = 0;
+    status = WritePrinter(*handle, (LPVOID)(data_.c_str()), (DWORD)data_.size(),
+                          &bytesWritten);
+    EndPagePrinter(*handle);
+    EndDocPrinter(*handle);
+    if (!status || bytesWritten != data_.size()) {
+      SetError("Failed to send all bytes to printer");
+      return;
+    }
+    jobId_ = job;
+  }
+
+  void OnOK() override { deferred_.Resolve(Napi::Number::New(Env(), jobId_)); }
+
+private:
+  std::string data_;
+  std::u16string printerName_;
+  std::u16string docName_;
+  std::u16string type_;
+  DWORD jobId_ = 0;
+};
 
 /**
  * Returns last error code and message string
@@ -366,266 +825,53 @@ std::string getLastErrorCodeAndMessage() {
   return s.str();
 }
 
-std::string retrieveAndParseJobs(const LPWSTR iPrinterName,
-                                 const DWORD &iTotalJobs,
-                                 Napi::Object result_printer_jobs,
-                                 PrinterHandle &iPrinterHandle) {
-  Napi::Env env = result_printer_jobs.Env();
-  DWORD bytes_needed = 0, totalJobs = 0;
-  BOOL bError = EnumJobsW(*iPrinterHandle, 0, iTotalJobs, 2, NULL, bytes_needed,
-                          &bytes_needed, &totalJobs);
-  auto jobs = mallocValue<JOB_INFO_2W>(bytes_needed);
-  if (!jobs) {
-    std::string error_str("Error on allocating memory for jobs: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Object result_printer_job = Napi::Object::New(env);
-    result_printer_job.Set(Napi::String::New(env, "error"),
-                           Napi::String::New(env, error_str.c_str()));
-    result_printer_jobs.Set((uint32_t)0, result_printer_job);
-    return std::string("");
-  }
-  DWORD dummy_bytes = 0;
-  bError = EnumJobsW(*iPrinterHandle, 0, iTotalJobs, 2, (LPBYTE)jobs.get(),
-                     bytes_needed, &dummy_bytes, &totalJobs);
-  if (!bError) {
-    std::string error_str("Error on EnumJobsW: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Object result_printer_job = Napi::Object::New(env);
-    result_printer_job.Set(Napi::String::New(env, "error"),
-                           Napi::String::New(env, error_str.c_str()));
-    result_printer_jobs.Set((uint32_t)0, result_printer_job);
-    return std::string("");
-  }
-  JOB_INFO_2W *job = jobs.get();
-  for (DWORD i = 0; i < totalJobs; ++i, ++job) {
-    Napi::Object result_printer_job = Napi::Object::New(env);
-    parseJobObject(job, result_printer_job);
-    result_printer_jobs.Set(i, result_printer_job);
-  }
-  return std::string("");
-}
-
-std::string parsePrinterInfo(const PRINTER_INFO_2W *printer,
-                             Napi::Object result_printer,
-                             PrinterHandle &iPrinterHandle) {
-  Napi::Env env = result_printer.Env();
-  auto wstrToNapi = [&](LPCWSTR value) -> Napi::String {
-    return Napi::String::New(env, reinterpret_cast<const char16_t *>(value));
-  };
-
-  // --- Standardized fields ---
-
-  // name
-  if (printer->pPrinterName) {
-    result_printer.Set(Napi::String::New(env, "name"),
-                       wstrToNapi(printer->pPrinterName));
-  }
-
-  // isDefault
-  std::u16string defaultName = getDefaultPrinterName();
-  bool isDefault = (printer->pPrinterName != nullptr) &&
-                   (defaultName == reinterpret_cast<const char16_t *>(
-                                       printer->pPrinterName));
-  result_printer.Set(Napi::String::New(env, "isDefault"),
-                     Napi::Boolean::New(env, isDefault));
-
-  // state
-  const char *state_str = "idle";
-  if (printer->Status & (PRINTER_STATUS_PRINTING | PRINTER_STATUS_PROCESSING)) {
-    state_str = "processing";
-  } else if (printer->Status & kStoppedMask) {
-    state_str = "stopped";
-  }
-  result_printer.Set(Napi::String::New(env, "state"),
-                     Napi::String::New(env, state_str));
-
-  // stateReasons
-  Napi::Array state_reasons = Napi::Array::New(env);
-  uint32_t reason_idx = 0;
-  if (printer->Status == 0) {
-    state_reasons.Set(reason_idx++, Napi::String::New(env, "none"));
-  } else {
-    for (auto &entry : getIppReasonMap()) {
-      if (printer->Status & entry.first) {
-        state_reasons.Set(reason_idx++,
-                          Napi::String::New(env, entry.second));
-      }
-    }
-    if (reason_idx == 0) {
-      // Has status bits set but none map to IPP reasons (e.g. only PRINTING)
-      state_reasons.Set(reason_idx++, Napi::String::New(env, "none"));
-    }
-  }
-  result_printer.Set(Napi::String::New(env, "stateReasons"), state_reasons);
-
-  // jobs
-  Napi::Array result_printer_jobs = Napi::Array::New(env);
-  if (printer->cJobs > 0) {
-    std::string error_str =
-        retrieveAndParseJobs(printer->pPrinterName, printer->cJobs,
-                             result_printer_jobs, iPrinterHandle);
-    if (!error_str.empty()) {
-      return error_str;
-    }
-  }
-  result_printer.Set(Napi::String::New(env, "jobs"), result_printer_jobs);
-
-  // --- Platform-specific raw fields ---
-  Napi::Object raw = Napi::Object::New(env);
-
-  auto addRawString = [&](const char *name, LPCWSTR value) {
-    if ((value != NULL) && (*value != L'\0')) {
-      raw.Set(name, wstrToNapi(value));
-    }
-  };
-
-  addRawString("serverName", printer->pServerName);
-  addRawString("shareName", printer->pShareName);
-  addRawString("portName", printer->pPortName);
-  addRawString("driverName", printer->pDriverName);
-  addRawString("comment", printer->pComment);
-  addRawString("location", printer->pLocation);
-  addRawString("sepFile", printer->pSepFile);
-  addRawString("printProcessor", printer->pPrintProcessor);
-  addRawString("datatype", printer->pDatatype);
-  addRawString("parameters", printer->pParameters);
-
-  // Raw status info
-  Napi::Array raw_status = Napi::Array::New(env);
-  int i_status = 0;
-  for (auto &itStatus : getStatusMap()) {
-    if (printer->Status & itStatus.second) {
-      raw_status.Set(i_status++,
-                     Napi::String::New(env, itStatus.first.c_str()));
-    }
-  }
-  raw.Set(Napi::String::New(env, "status"), raw_status);
-  raw.Set(Napi::String::New(env, "statusNumber"),
-          Napi::Number::New(env, printer->Status));
-
-  // Attributes
-  Napi::Array raw_attributes = Napi::Array::New(env);
-  int i_attribute = 0;
-  for (auto &itAttribute : getAttributeMap()) {
-    if (printer->Attributes & itAttribute.second) {
-      raw_attributes.Set(i_attribute++,
-                         Napi::String::New(env, itAttribute.first.c_str()));
-    }
-  }
-  raw.Set(Napi::String::New(env, "attributes"), raw_attributes);
-
-  raw.Set(Napi::String::New(env, "priority"),
-          Napi::Number::New(env, printer->Priority));
-  raw.Set(Napi::String::New(env, "defaultPriority"),
-          Napi::Number::New(env, printer->DefaultPriority));
-  raw.Set(Napi::String::New(env, "averagePPM"),
-          Napi::Number::New(env, printer->AveragePPM));
-
-  if (printer->StartTime > 0) {
-    raw.Set(Napi::String::New(env, "startTime"),
-            Napi::Number::New(env, printer->StartTime));
-  }
-  if (printer->UntilTime > 0) {
-    raw.Set(Napi::String::New(env, "untilTime"),
-            Napi::Number::New(env, printer->UntilTime));
-  }
-
-  result_printer.Set(Napi::String::New(env, "raw"), raw);
-  return "";
-}
 } // namespace
 
-Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  DWORD printers_size = 0;
-  DWORD printers_size_bytes = 0, dummyBytes = 0;
-  DWORD Level = 2;
-  DWORD flags =
-      PRINTER_ENUM_LOCAL |
-      PRINTER_ENUM_CONNECTIONS; // https://msdn.microsoft.com/en-us/library/cc244669.aspx
-  // First try to retrieve the number of printers
-  BOOL bError = EnumPrintersW(flags, NULL, 2, NULL, 0, &printers_size_bytes,
-                              &printers_size);
-  // allocate the required memmory
-  auto printers = mallocValue<PRINTER_INFO_2W>(printers_size_bytes);
-  if (!printers) {
-    Napi::Error::New(env, "Error on allocating memory for printers")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  bError = EnumPrintersW(flags, NULL, 2, (LPBYTE)(printers.get()),
-                         printers_size_bytes, &dummyBytes, &printers_size);
-  if (!bError) {
-    std::string error_str("Error on EnumPrinters: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  Napi::Array result = Napi::Array::New(env, printers_size);
-  // http://msdn.microsoft.com/en-gb/library/windows/desktop/dd162845(v=vs.85).aspx
-  PRINTER_INFO_2W *printer = printers.get();
-  DWORD i = 0;
-  for (; i < printers_size; ++i, ++printer) {
-    Napi::Object result_printer = Napi::Object::New(env);
-    PrinterHandle printerHandle((LPWSTR)(printer->pPrinterName));
-    std::string error_str =
-        parsePrinterInfo(printer, result_printer, printerHandle);
-    if (!error_str.empty()) {
-      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    result.Set(i, result_printer);
-  }
-  return result;
+Napi::Value getAllPrinterDetails(const Napi::CallbackInfo &iArgs) {
+  auto *worker = new GetAllPrinterDetailsWorker(iArgs.Env());
+  worker->Queue();
+  return worker->GetPromise();
 }
 
-Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
+Napi::Value getPrinterDetails(const Napi::CallbackInfo &iArgs) {
   Napi::Env env = iArgs.Env();
   if (iArgs.Length() < 1) {
     Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  std::u16string printername;
   if (!iArgs[0].IsString()) {
     Napi::Error::New(env, "Printer must be a string")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  printername = iArgs[0].As<Napi::String>().Utf16Value();
+  auto *worker = new GetPrinterDetailsWorker(
+      env, iArgs[0].As<Napi::String>().Utf16Value());
+  worker->Queue();
+  return worker->GetPromise();
+}
 
-  // Open a handle to the printer.
-  PrinterHandle printerHandle(
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
-  if (!printerHandle) {
-    return env.Null();
+Napi::Value hasPrinter(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  if (iArgs.Length() < 1) {
+    Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  DWORD printers_size_bytes = 0, dummyBytes = 0;
-  GetPrinterW(*printerHandle, 2, NULL, printers_size_bytes,
-              &printers_size_bytes);
-  auto printer = mallocValue<PRINTER_INFO_2W>(printers_size_bytes);
-  if (!printer) {
-    Napi::Error::New(env, "Error on allocating memory for printers")
+  if (!iArgs[0].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  BOOL bOK = GetPrinterW(*printerHandle, 2, (LPBYTE)(printer.get()),
-                         printers_size_bytes, &printers_size_bytes);
-  if (!bOK) {
-    std::string error_str("Error on GetPrinter: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  Napi::Object result_printer = Napi::Object::New(env);
-  std::string error_str =
-      parsePrinterInfo(printer.get(), result_printer, printerHandle);
-  if (!error_str.empty()) {
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
 
-  return result_printer;
+  auto *worker =
+      new HasPrinterWorker(env, iArgs[0].As<Napi::String>().Utf16Value());
+  worker->Queue();
+  return worker->GetPromise();
+}
+
+Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs) {
+  auto *worker = new GetDefaultPrinterNameWorker(iArgs.Env());
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
@@ -643,41 +889,14 @@ Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
   printername = iArgs[0].As<Napi::String>().Utf16Value();
   int jobId;
   if (!iArgs[1].IsNumber()) {
-    Napi::Error::New(env, "Job id must be a number")
+    Napi::Error::New(env, "Job ID must be a number")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
-  if (jobId < 0) {
-    Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  // Open a handle to the printer.
-  PrinterHandle printerHandle(
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
-  if (!printerHandle) {
-    std::string error_str("error on PrinterHandle: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  DWORD size_bytes = 0, dummyBytes = 0;
-  GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2, NULL, size_bytes,
-          &size_bytes);
-  auto job = mallocValue<JOB_INFO_2W>(size_bytes);
-  if (!job) {
-    Napi::Error::New(env, "Error on allocating memory for printers")
-        .ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  BOOL bOK = GetJobW(*printerHandle, static_cast<DWORD>(jobId), 2,
-                     (LPBYTE)job.get(), size_bytes, &dummyBytes);
-  if (!bOK) {
-    return env.Null();
-  }
-  Napi::Object result_printer_job = Napi::Object::New(env);
-  parseJobObject(job.get(), result_printer_job);
-  return result_printer_job;
+  auto *worker = new GetJobWorker(env, std::move(printername), jobId);
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
@@ -695,83 +914,20 @@ Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
   printername = iArgs[0].As<Napi::String>().Utf16Value();
   int jobId;
   if (!iArgs[1].IsNumber()) {
-    Napi::Error::New(env, "Job id must be a number")
+    Napi::Error::New(env, "Job ID must be a number")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
-  if (jobId < 0) {
-    Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  PrinterHandle printerHandle(
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
-  if (!printerHandle) {
-    std::string error_str("error on PrinterHandle: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  // Use JOB_CONTROL_DELETE (Microsoft recommends over JOB_CONTROL_CANCEL).
-  // Returns FALSE if the job no longer exists — treat that as a no-op.
-  SetJobW(*printerHandle, (DWORD)jobId, 0, NULL, JOB_CONTROL_DELETE);
-  return env.Undefined();
+  auto *worker = new CancelJobWorker(env, std::move(printername), jobId);
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  Napi::Array result = Napi::Array::New(env);
-  int format_i = 0;
-
-  LPTSTR name = NULL;
-  DWORD numBytes = 0, processorsNum = 0;
-
-  // Check the amount of bytes required
-  LPWSTR nullVal = NULL;
-  EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(NULL), numBytes, &numBytes,
-                       &processorsNum);
-  auto processors = mallocValue<_PRINTPROCESSOR_INFO_1W>(numBytes);
-  // Retrieve processors
-  BOOL isOK =
-      EnumPrintProcessorsW(nullVal, nullVal, 1, (LPBYTE)(processors.get()),
-                           numBytes, &numBytes, &processorsNum);
-
-  if (!isOK) {
-    std::string error_str("error on EnumPrintProcessorsW: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  _PRINTPROCESSOR_INFO_1W *pProcessor = processors.get();
-
-  for (DWORD processor_i = 0; processor_i < processorsNum;
-       ++processor_i, ++pProcessor) {
-    numBytes = 0;
-    DWORD dataTypesNum = 0;
-    EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1, (LPBYTE)(NULL),
-                                 numBytes, &numBytes, &dataTypesNum);
-    auto dataTypes = mallocValue<_DATATYPES_INFO_1W>(numBytes);
-    isOK = EnumPrintProcessorDatatypesW(nullVal, pProcessor->pName, 1,
-                                        (LPBYTE)(dataTypes.get()), numBytes,
-                                        &numBytes, &dataTypesNum);
-
-    if (!isOK) {
-      std::string error_str("error on EnumPrintProcessorDatatypesW: ");
-      error_str += getLastErrorCodeAndMessage();
-      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-
-    _DATATYPES_INFO_1W *pDataType = dataTypes.get();
-    for (DWORD j = 0; j < dataTypesNum; ++j, ++pDataType) {
-      result.Set(format_i++,
-                 Napi::String::New(env, reinterpret_cast<const char16_t *>(
-                                            pDataType->pName)));
-    }
-  }
-
-  return result;
+  auto *worker = new GetSupportedPrintFormatsWorker(iArgs.Env());
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
@@ -816,64 +972,16 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
   }
   type = iArgs[3].As<Napi::String>().Utf16Value();
 
-  BOOL bStatus = true;
-  // Open a handle to the printer.
-  PrinterHandle printerHandle(
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(printername.c_str())));
-  DOC_INFO_1W DocInfo;
-  DWORD dwJob = 0L;
-  DWORD dwBytesWritten = 0L;
-
-  if (!printerHandle) {
-    std::string error_str("error on PrinterHandle: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  // Fill in the structure with info about this "document."
-  DocInfo.pDocName =
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(docname.c_str()));
-  DocInfo.pOutputFile = NULL;
-  DocInfo.pDatatype =
-      reinterpret_cast<LPWSTR>(const_cast<char16_t *>(type.c_str()));
-
-  // Inform the spooler the document is beginning.
-  dwJob = StartDocPrinterW(*printerHandle, 1, (LPBYTE)&DocInfo);
-  if (dwJob > 0) {
-    // Start a page.
-    bStatus = StartPagePrinter(*printerHandle);
-    if (bStatus) {
-      // Send the data to the printer.
-      // TODO: check with sizeof(LPTSTR) is the same as sizeof(char)
-      bStatus = WritePrinter(*printerHandle, (LPVOID)(data.c_str()),
-                             (DWORD)data.size(), &dwBytesWritten);
-      EndPagePrinter(*printerHandle);
-    } else {
-      std::string error_str("StartPagePrinter error: ");
-      error_str += getLastErrorCodeAndMessage();
-      Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-      return env.Undefined();
-    }
-    // Inform the spooler that the document is ending.
-    EndDocPrinter(*printerHandle);
-  } else {
-    std::string error_str("StartDocPrinterW error: ");
-    error_str += getLastErrorCodeAndMessage();
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  // Check to see if correct number of bytes were written.
-  if (dwBytesWritten != data.size()) {
-    Napi::Error::New(env, "not sent all bytes").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  return Napi::Number::New(env, dwJob);
+  auto *worker =
+      new PrintDirectWorker(env, std::move(data), std::move(printername),
+                            std::move(docname), std::move(type));
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value PrintFile(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-  Napi::Error::New(env, "Not yet implemented on Windows")
-      .ThrowAsJavaScriptException();
-  return env.Undefined();
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(iArgs.Env());
+  deferred.Reject(
+      Napi::Error::New(iArgs.Env(), "Not yet implemented on Windows").Value());
+  return deferred.Promise();
 }

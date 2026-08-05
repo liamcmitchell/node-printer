@@ -20,6 +20,7 @@
       'target_name': 'node_printer',
       'sources': [
         'src/node_printer.cc',
+        'src/printer_model.cc',
         'src/node_printer_posix.cc',
         'src/node_printer_win.cc'
       ],

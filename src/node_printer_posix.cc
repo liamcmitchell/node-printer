@@ -1,10 +1,12 @@
 #include "node_printer.hpp"
+#include "printer_model.hpp"
 
 #include <map>
 #include <node_version.h>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <cups/cups.h>
 
@@ -55,100 +57,67 @@ const FormatMapType &getPrinterFormatMap() {
   return result;
 }
 
-/** Parse job info object.
- * @return error string. if empty, then no error
- */
-std::string parseJobObject(const cups_job_t *job,
-                           Napi::Object result_printer_job) {
-  Napi::Env env = result_printer_job.Env();
-
-  // Standardized fields
-  result_printer_job.Set(Napi::String::New(env, "id"),
-                         Napi::Number::New(env, job->id));
-  result_printer_job.Set(Napi::String::New(env, "name"),
-                         Napi::String::New(env, job->title));
-  result_printer_job.Set(Napi::String::New(env, "printerName"),
-                         Napi::String::New(env, job->dest));
-  result_printer_job.Set(Napi::String::New(env, "user"),
-                         Napi::String::New(env, job->user));
-  result_printer_job.Set(Napi::String::New(env, "size"),
-                         Napi::Number::New(env, job->size));
-
-  // state (IPP job-state keyword)
-  const char *state_str = "pending";
+std::string getJobStateString(int stateCode) {
   for (auto &entry : getJobStatusMap()) {
-    if (job->state == entry.second) {
-      state_str = entry.first.c_str();
-      break;
+    if (stateCode == entry.second) {
+      return entry.first;
     }
   }
-  result_printer_job.Set(Napi::String::New(env, "state"),
-                         Napi::String::New(env, state_str));
-
-  // Timestamps as epoch seconds
-  result_printer_job.Set(Napi::String::New(env, "createdAt"),
-                         Napi::Number::New(env, (double)job->creation_time));
-  result_printer_job.Set(Napi::String::New(env, "processingAt"),
-                         Napi::Number::New(env, (double)job->processing_time));
-  result_printer_job.Set(Napi::String::New(env, "completedAt"),
-                         Napi::Number::New(env, (double)job->completed_time));
-
-  // Platform-specific raw fields
-  Napi::Object raw = Napi::Object::New(env);
-  raw.Set(Napi::String::New(env, "format"),
-          Napi::String::New(env, job->format));
-  raw.Set(Napi::String::New(env, "priority"),
-          Napi::Number::New(env, job->priority));
-  raw.Set(Napi::String::New(env, "stateCode"),
-          Napi::Number::New(env, job->state));
-  result_printer_job.Set(Napi::String::New(env, "raw"), raw);
-
-  return "";
+  return "pending";
 }
 
-/** Parse printer info object
- * @return error string.
- */
-std::string parsePrinterInfo(const cups_dest_t *printer,
-                             Napi::Object result_printer) {
-  Napi::Env env = result_printer.Env();
-  result_printer.Set(Napi::String::New(env, "name"),
-                     Napi::String::New(env, printer->name));
-  result_printer.Set(
-      Napi::String::New(env, "isDefault"),
-      Napi::Boolean::New(env, static_cast<bool>(printer->is_default)));
+printer_model::JobModel toJobData(const cups_job_t *job) {
+  printer_model::JobModel out;
+  out.id = job->id;
+  out.name = job->title ? job->title : "";
+  out.printerName = job->dest ? job->dest : "";
+  out.user = job->user ? job->user : "";
+  out.size = job->size;
+  out.state = getJobStateString(job->state);
+  out.createdAt = static_cast<double>(job->creation_time);
+  out.processingAt = static_cast<double>(job->processing_time);
+  out.completedAt = static_cast<double>(job->completed_time);
+  out.raw["format"] =
+      printer_model::RawValue::FromString(job->format ? job->format : "");
+  out.raw["priority"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->priority));
+  out.raw["stateCode"] =
+      printer_model::RawValue::FromNumber(static_cast<double>(job->state));
+  return out;
+}
 
-  // Map printer-state to standardized state
-  const char *state_val = cupsGetOption("printer-state", printer->num_options,
-                                        printer->options);
-  const char *state_str = "idle";
+printer_model::PrinterModel toPrinterData(const cups_dest_t *printer,
+                                          bool includeJobs) {
+  printer_model::PrinterModel out;
+  out.name = printer->name ? printer->name : "";
+  out.isDefault = static_cast<bool>(printer->is_default);
+
+  const char *state_val =
+      cupsGetOption("printer-state", printer->num_options, printer->options);
   if (state_val) {
     switch (state_val[0]) {
     case '4':
-      state_str = "processing";
+      out.state = "processing";
       break;
     case '5':
-      state_str = "stopped";
+      out.state = "stopped";
+      break;
+    default:
       break;
     }
   }
-  result_printer.Set(Napi::String::New(env, "state"),
-                     Napi::String::New(env, state_str));
 
-  // Parse printer-state-reasons into stateReasons array
-  Napi::Array state_reasons = Napi::Array::New(env);
   const char *reasons_val = cupsGetOption(
       "printer-state-reasons", printer->num_options, printer->options);
   if (reasons_val) {
     std::string reasons(reasons_val);
-    uint32_t idx = 0;
     size_t pos = 0;
     while (pos < reasons.size()) {
       size_t comma = reasons.find(',', pos);
-      if (comma == std::string::npos)
+      if (comma == std::string::npos) {
         comma = reasons.size();
+      }
       std::string reason = reasons.substr(pos, comma - pos);
-      // Strip severity suffix (-report, -warning, -error)
       size_t dash = reason.rfind('-');
       if (dash != std::string::npos) {
         std::string suffix = reason.substr(dash);
@@ -156,49 +125,146 @@ std::string parsePrinterInfo(const cups_dest_t *printer,
           reason = reason.substr(0, dash);
         }
       }
-      state_reasons.Set(idx++, Napi::String::New(env, reason));
+      out.stateReasons.push_back(reason);
       pos = comma + 1;
     }
   }
-  result_printer.Set(Napi::String::New(env, "stateReasons"), state_reasons);
 
-  // All CUPS options go into raw
-  Napi::Object raw = Napi::Object::New(env);
   cups_option_t *dest_option = printer->options;
   for (int j = 0; j < printer->num_options; ++j, ++dest_option) {
-    raw.Set(Napi::String::New(env, dest_option->name),
-            Napi::String::New(env, dest_option->value));
+    out.raw[dest_option->name ? dest_option->name : ""] =
+        printer_model::RawValue::FromString(
+            dest_option->value ? dest_option->value : "");
   }
   if (printer->instance) {
-    raw.Set(Napi::String::New(env, "instance"),
-            Napi::String::New(env, printer->instance));
+    out.raw["instance"] =
+        printer_model::RawValue::FromString(printer->instance);
   }
-  result_printer.Set(Napi::String::New(env, "raw"), raw);
 
-  // Get printer jobs
-  Napi::Array result_priner_jobs = Napi::Array::New(env);
-  cups_job_t *jobs;
-  int totalJobs = cupsGetJobs(&jobs, printer->name, 0 /*0 means all users*/,
-                              CUPS_WHICHJOBS_ACTIVE);
-  std::string error_str;
-  if (totalJobs > 0) {
-    int jobi = 0;
-    cups_job_t *job = jobs;
-    for (; jobi < totalJobs; ++jobi, ++job) {
-      Napi::Object result_printer_job = Napi::Object::New(env);
-      error_str = parseJobObject(job, result_printer_job);
-      if (!error_str.empty()) {
-        break;
-      }
-      result_priner_jobs.Set(jobi, result_printer_job);
+  if (includeJobs) {
+    cups_job_t *jobs = nullptr;
+    int totalJobs = cupsGetJobs(&jobs, printer->name, 0, CUPS_WHICHJOBS_ACTIVE);
+    for (int i = 0; i < totalJobs; ++i) {
+      out.jobs.push_back(toJobData(&jobs[i]));
     }
+    cupsFreeJobs(totalJobs, jobs);
   }
-  result_printer.Set(Napi::String::New(env, "jobs"), result_priner_jobs);
-  cupsFreeJobs(totalJobs, jobs);
-  return error_str;
+
+  return out;
 }
 
+class GetAllPrinterDetailsWorker : public PromiseWorker {
+public:
+  explicit GetAllPrinterDetailsWorker(Napi::Env env) : PromiseWorker(env) {}
+
+  void Execute() override {
+    cups_dest_t *printers = nullptr;
+    int printers_size = cupsGetDests(&printers);
+    for (int i = 0; i < printers_size; ++i) {
+      result_.push_back(toPrinterData(&printers[i], true));
+    }
+    cupsFreeDests(printers_size, printers);
+  }
+
+  void OnOK() override {
+    Napi::Env env = Env();
+    Napi::Array arr = Napi::Array::New(env, result_.size());
+    for (size_t i = 0; i < result_.size(); ++i) {
+      arr.Set(static_cast<uint32_t>(i),
+              printer_model::SerializePrinterModel(env, result_[i]));
+    }
+    deferred_.Resolve(arr);
+  }
+
+private:
+  std::vector<printer_model::PrinterModel> result_;
+};
+
+class GetPrinterDetailsWorker : public PromiseWorker {
+public:
+  GetPrinterDetailsWorker(Napi::Env env, std::string printerName)
+      : PromiseWorker(env), printerName_(std::move(printerName)) {}
+
+  void Execute() override {
+    cups_dest_t *printers = nullptr;
+    int printers_size = cupsGetDests(&printers);
+    cups_dest_t *printer =
+        cupsGetDest(printerName_.c_str(), NULL, printers_size, printers);
+    if (printer != nullptr) {
+      found_ = true;
+      result_ = toPrinterData(printer, true);
+    }
+    cupsFreeDests(printers_size, printers);
+  }
+
+  void OnOK() override {
+    if (!found_) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(printer_model::SerializePrinterModel(Env(), result_));
+  }
+
+private:
+  std::string printerName_;
+  bool found_ = false;
+  printer_model::PrinterModel result_;
+};
+
+class HasPrinterWorker : public PromiseWorker {
+public:
+  HasPrinterWorker(Napi::Env env, std::string printerName)
+      : PromiseWorker(env), printerName_(std::move(printerName)) {}
+
+  void Execute() override {
+    cups_dest_t *printers = nullptr;
+    int printers_size = cupsGetDests(&printers);
+    cups_dest_t *printer =
+        cupsGetDest(printerName_.c_str(), NULL, printers_size, printers);
+    found_ = (printer != nullptr);
+    cupsFreeDests(printers_size, printers);
+  }
+
+  void OnOK() override { deferred_.Resolve(Napi::Boolean::New(Env(), found_)); }
+
+private:
+  std::string printerName_;
+  bool found_ = false;
+};
+
+class GetDefaultPrinterNameWorker : public PromiseWorker {
+public:
+  explicit GetDefaultPrinterNameWorker(Napi::Env env) : PromiseWorker(env) {}
+
+  void Execute() override {
+    cups_dest_t *printers = nullptr;
+    int printers_size = cupsGetDests(&printers);
+    for (int i = 0; i < printers_size; ++i) {
+      if (printers[i].is_default) {
+        found_ = true;
+        name_ = printers[i].name ? printers[i].name : "";
+        break;
+      }
+    }
+    cupsFreeDests(printers_size, printers);
+  }
+
+  void OnOK() override {
+    if (!found_) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(Napi::String::New(Env(), name_));
+  }
+
+private:
+  bool found_ = false;
+  std::string name_;
+};
+
 /// cups option class to automatically free memory.
+/// Built from plain C++ data so it can safely be used from a worker thread
+/// (Napi::Object must only be touched on the main thread).
 class CupsOptions {
 protected:
   cups_option_t *_value = nullptr;
@@ -215,77 +281,225 @@ public:
   CupsOptions(const CupsOptions &) = delete;
   CupsOptions &operator=(const CupsOptions &) = delete;
 
-  /// Add options from v8 object
-  CupsOptions(Napi::Object iV8Options) : num_options(0) {
-    Napi::Array props = iV8Options.GetPropertyNames();
-
-    for (uint32_t i = 0; i < props.Length(); ++i) {
-      Napi::Value key = props.Get(i);
-      std::string keyStr = key.As<Napi::String>().Utf8Value();
-      std::string valStr = iV8Options.Get(key).As<Napi::String>().Utf8Value();
-
-      num_options =
-          cupsAddOption(keyStr.c_str(), valStr.c_str(), num_options, &_value);
+  explicit CupsOptions(
+      const std::vector<std::pair<std::string, std::string>> &options) {
+    for (const auto &entry : options) {
+      num_options = cupsAddOption(entry.first.c_str(), entry.second.c_str(),
+                                  num_options, &_value);
     }
   }
 
   const int &getNumOptions() { return num_options; }
   cups_option_t *get() { return _value; }
 };
-} // namespace
 
-Napi::Value getPrinters(const Napi::CallbackInfo &iArgs) {
-  Napi::Env env = iArgs.Env();
-
-  cups_dest_t *printers = NULL;
-  int printers_size = cupsGetDests(&printers);
-  Napi::Array result = Napi::Array::New(env, printers_size);
-  cups_dest_t *printer = printers;
-  std::string error_str;
-  for (int i = 0; i < printers_size; ++i, ++printer) {
-    Napi::Object result_printer = Napi::Object::New(env);
-    error_str = parsePrinterInfo(printer, result_printer);
-    if (!error_str.empty()) {
-      // got an error? break then
-      break;
-    }
-    result.Set(i, result_printer);
-  }
-  cupsFreeDests(printers_size, printers);
-  if (!error_str.empty()) {
-    // got an error? return the error then
-    Napi::Error::New(env, error_str.c_str()).ThrowAsJavaScriptException();
-    return env.Undefined();
+/// Extract a JS options object into plain C++ data on the main thread so it
+/// can be handed off to an AsyncWorker.
+std::vector<std::pair<std::string, std::string>>
+extractOptions(Napi::Object iV8Options) {
+  std::vector<std::pair<std::string, std::string>> result;
+  Napi::Array props = iV8Options.GetPropertyNames();
+  for (uint32_t i = 0; i < props.Length(); ++i) {
+    Napi::Value key = props.Get(i);
+    std::string keyStr = key.As<Napi::String>().Utf8Value();
+    std::string valStr = iV8Options.Get(key).As<Napi::String>().Utf8Value();
+    result.emplace_back(std::move(keyStr), std::move(valStr));
   }
   return result;
 }
 
-Napi::Value getPrinter(const Napi::CallbackInfo &iArgs) {
+class GetJobWorker : public PromiseWorker {
+public:
+  GetJobWorker(Napi::Env env, std::string printerName, int jobId)
+      : PromiseWorker(env), printerName_(std::move(printerName)),
+        jobId_(jobId) {}
+
+  void Execute() override {
+    cups_job_t *jobs = nullptr;
+    int totalJobs = cupsGetJobs(&jobs, printerName_.c_str(),
+                                0 /*0 means all users*/, CUPS_WHICHJOBS_ALL);
+    for (int i = 0; i < totalJobs; ++i) {
+      if (jobs[i].id == jobId_) {
+        found_ = true;
+        result_ = toJobData(&jobs[i]);
+        break;
+      }
+    }
+    cupsFreeJobs(totalJobs, jobs);
+  }
+
+  void OnOK() override {
+    if (!found_) {
+      deferred_.Resolve(Env().Null());
+      return;
+    }
+    deferred_.Resolve(printer_model::SerializeJobModel(Env(), result_));
+  }
+
+private:
+  std::string printerName_;
+  int jobId_;
+  bool found_ = false;
+  printer_model::JobModel result_;
+};
+
+class CancelJobWorker : public PromiseWorker {
+public:
+  CancelJobWorker(Napi::Env env, std::string printerName, int jobId)
+      : PromiseWorker(env), printerName_(std::move(printerName)),
+        jobId_(jobId) {}
+
+  void Execute() override {
+    // Ignore return value: cupsCancelJob returns 0 if the job no longer
+    // exists, which we treat as a no-op.
+    cupsCancelJob(printerName_.c_str(), jobId_);
+  }
+
+  void OnOK() override { deferred_.Resolve(Env().Undefined()); }
+
+private:
+  std::string printerName_;
+  int jobId_;
+};
+
+class PrintDirectWorker : public PromiseWorker {
+public:
+  PrintDirectWorker(Napi::Env env, std::string data, std::string printerName,
+                    std::string docName, std::string type,
+                    std::vector<std::pair<std::string, std::string>> options)
+      : PromiseWorker(env), data_(std::move(data)),
+        printerName_(std::move(printerName)), docName_(std::move(docName)),
+        type_(std::move(type)), options_(std::move(options)) {}
+
+  void Execute() override {
+    std::string type_str = type_;
+    auto itFormat = getPrinterFormatMap().find(type_str);
+    // Known aliases (RAW, PDF, etc.) are translated to MIME types.
+    // Anything else is passed directly to CUPS as a MIME type — let CUPS
+    // reject it if unsupported, matching the Windows spooler behaviour.
+    if (itFormat != getPrinterFormatMap().end()) {
+      type_str = itFormat->second;
+    }
+
+    CupsOptions options(options_);
+
+    int job_id =
+        cupsCreateJob(CUPS_HTTP_DEFAULT, printerName_.c_str(), docName_.c_str(),
+                      options.getNumOptions(), options.get());
+    if (job_id == 0) {
+      SetError(cupsLastErrorString());
+      return;
+    }
+
+    if (HTTP_CONTINUE != cupsStartDocument(CUPS_HTTP_DEFAULT,
+                                           printerName_.c_str(), job_id,
+                                           docName_.c_str(), type_str.c_str(),
+                                           1 /*last document*/)) {
+      SetError(cupsLastErrorString());
+      return;
+    }
+
+    /* cupsWriteRequestData can be called as many times as needed */
+    // TODO: to split big buffer
+    if (HTTP_CONTINUE !=
+        cupsWriteRequestData(CUPS_HTTP_DEFAULT, data_.c_str(), data_.size())) {
+      cupsFinishDocument(CUPS_HTTP_DEFAULT, printerName_.c_str());
+      SetError(cupsLastErrorString());
+      return;
+    }
+
+    cupsFinishDocument(CUPS_HTTP_DEFAULT, printerName_.c_str());
+    jobId_ = job_id;
+  }
+
+  void OnOK() override { deferred_.Resolve(Napi::Number::New(Env(), jobId_)); }
+
+private:
+  std::string data_;
+  std::string printerName_;
+  std::string docName_;
+  std::string type_;
+  std::vector<std::pair<std::string, std::string>> options_;
+  int jobId_ = 0;
+};
+
+class PrintFileWorker : public PromiseWorker {
+public:
+  PrintFileWorker(Napi::Env env, std::string filename, std::string docName,
+                  std::string printerName,
+                  std::vector<std::pair<std::string, std::string>> options)
+      : PromiseWorker(env), filename_(std::move(filename)),
+        docName_(std::move(docName)), printerName_(std::move(printerName)),
+        options_(std::move(options)) {}
+
+  void Execute() override {
+    CupsOptions options(options_);
+    int job_id =
+        cupsPrintFile(printerName_.c_str(), filename_.c_str(), docName_.c_str(),
+                      options.getNumOptions(), options.get());
+    if (job_id == 0) {
+      SetError(cupsLastErrorString());
+      return;
+    }
+    jobId_ = job_id;
+  }
+
+  void OnOK() override { deferred_.Resolve(Napi::Number::New(Env(), jobId_)); }
+
+private:
+  std::string filename_;
+  std::string docName_;
+  std::string printerName_;
+  std::vector<std::pair<std::string, std::string>> options_;
+  int jobId_ = 0;
+};
+} // namespace
+
+Napi::Value getAllPrinterDetails(const Napi::CallbackInfo &iArgs) {
+  auto *worker = new GetAllPrinterDetailsWorker(iArgs.Env());
+  worker->Queue();
+  return worker->GetPromise();
+}
+
+Napi::Value getPrinterDetails(const Napi::CallbackInfo &iArgs) {
   Napi::Env env = iArgs.Env();
   if (iArgs.Length() < 1) {
     Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  std::string printername;
   if (!iArgs[0].IsString()) {
     Napi::Error::New(env, "Printer must be a string")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
-  printername = iArgs[0].As<Napi::String>().Utf8Value();
+  auto *worker =
+      new GetPrinterDetailsWorker(env, iArgs[0].As<Napi::String>().Utf8Value());
+  worker->Queue();
+  return worker->GetPromise();
+}
 
-  cups_dest_t *printers = NULL, *printer = NULL;
-  int printers_size = cupsGetDests(&printers);
-  printer = cupsGetDest(printername.c_str(), NULL, printers_size, printers);
-  Napi::Object result_printer = Napi::Object::New(env);
-  if (printer != NULL) {
-    parsePrinterInfo(printer, result_printer);
+Napi::Value hasPrinter(const Napi::CallbackInfo &iArgs) {
+  Napi::Env env = iArgs.Env();
+  if (iArgs.Length() < 1) {
+    Napi::Error::New(env, "Expected 1 arguments").ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  cupsFreeDests(printers_size, printers);
-  if (printer == NULL) {
-    return env.Null();
+  if (!iArgs[0].IsString()) {
+    Napi::Error::New(env, "Printer must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
   }
-  return result_printer;
+
+  auto *worker =
+      new HasPrinterWorker(env, iArgs[0].As<Napi::String>().Utf8Value());
+  worker->Queue();
+  return worker->GetPromise();
+}
+
+Napi::Value getDefaultPrinterName(const Napi::CallbackInfo &iArgs) {
+  auto *worker = new GetDefaultPrinterNameWorker(iArgs.Env());
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
@@ -303,35 +517,15 @@ Napi::Value getJob(const Napi::CallbackInfo &iArgs) {
   printername = iArgs[0].As<Napi::String>().Utf8Value();
   int jobId;
   if (!iArgs[1].IsNumber()) {
-    Napi::Error::New(env, "Job id must be a number")
+    Napi::Error::New(env, "Job ID must be a number")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
 
-  Napi::Object result_printer_job = Napi::Object::New(env);
-  // Get printer jobs
-  cups_job_t *jobs = NULL, *jobFound = NULL;
-  int totalJobs = cupsGetJobs(&jobs, printername.c_str(),
-                              0 /*0 means all users*/, CUPS_WHICHJOBS_ALL);
-  if (totalJobs > 0) {
-    int jobi = 0;
-    cups_job_t *job = jobs;
-    for (; jobi < totalJobs; ++jobi, ++job) {
-      if (job->id != jobId) {
-        continue;
-      }
-      // Job Found
-      jobFound = job;
-      parseJobObject(job, result_printer_job);
-      break;
-    }
-  }
-  cupsFreeJobs(totalJobs, jobs);
-  if (jobFound == NULL) {
-    return env.Null();
-  }
-  return result_printer_job;
+  auto *worker = new GetJobWorker(env, std::move(printername), jobId);
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
@@ -349,19 +543,15 @@ Napi::Value cancelJob(const Napi::CallbackInfo &iArgs) {
   printername = iArgs[0].As<Napi::String>().Utf8Value();
   int jobId;
   if (!iArgs[1].IsNumber()) {
-    Napi::Error::New(env, "Job id must be a number")
+    Napi::Error::New(env, "Job ID must be a number")
         .ThrowAsJavaScriptException();
     return env.Undefined();
   }
   jobId = iArgs[1].As<Napi::Number>().Int32Value();
-  if (jobId < 0) {
-    Napi::Error::New(env, "Wrong job number").ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  // Ignore return value: cupsCancelJob returns 0 if the job no longer exists,
-  // which we treat as a no-op.
-  cupsCancelJob(printername.c_str(), jobId);
-  return env.Undefined();
+
+  auto *worker = new CancelJobWorker(env, std::move(printername), jobId);
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
@@ -372,7 +562,12 @@ Napi::Value getSupportedPrintFormats(const Napi::CallbackInfo &iArgs) {
        itFormat != getPrinterFormatMap().end(); ++itFormat) {
     result.Set(i++, Napi::String::New(env, itFormat->first.c_str()));
   }
-  return result;
+  // No CUPS I/O here (just a static in-memory map), so there's nothing to
+  // offload to an AsyncWorker. Still return a real Promise so every native
+  // export has a consistent async signature across platforms.
+  Napi::Promise::Deferred deferred = Napi::Promise::Deferred::New(env);
+  deferred.Resolve(result);
+  return deferred.Promise();
 }
 
 Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
@@ -423,45 +618,11 @@ Napi::Value PrintDirect(const Napi::CallbackInfo &iArgs) {
   }
   print_options = iArgs[4].As<Napi::Object>();
 
-  std::string type_str(type);
-  auto itFormat = getPrinterFormatMap().find(type_str);
-  // Known aliases (RAW, PDF, etc.) are translated to MIME types.
-  // Anything else is passed directly to CUPS as a MIME type — let CUPS
-  // reject it if unsupported, matching the Windows spooler behaviour.
-  if (itFormat != getPrinterFormatMap().end()) {
-    type_str = itFormat->second;
-  }
-
-  CupsOptions options(print_options);
-
-  int job_id =
-      cupsCreateJob(CUPS_HTTP_DEFAULT, printername.c_str(), docname.c_str(),
-                    options.getNumOptions(), options.get());
-  if (job_id == 0) {
-    Napi::Error::New(env, cupsLastErrorString()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  if (HTTP_CONTINUE != cupsStartDocument(CUPS_HTTP_DEFAULT, printername.c_str(),
-                                         job_id, docname.c_str(),
-                                         type_str.c_str(),
-                                         1 /*last document*/)) {
-    Napi::Error::New(env, cupsLastErrorString()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  /* cupsWriteRequestData can be called as many times as needed */
-  // TODO: to split big buffer
-  if (HTTP_CONTINUE !=
-      cupsWriteRequestData(CUPS_HTTP_DEFAULT, data.c_str(), data.size())) {
-    cupsFinishDocument(CUPS_HTTP_DEFAULT, printername.c_str());
-    Napi::Error::New(env, cupsLastErrorString()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-
-  cupsFinishDocument(CUPS_HTTP_DEFAULT, printername.c_str());
-
-  return Napi::Number::New(env, job_id);
+  auto *worker = new PrintDirectWorker(
+      env, std::move(data), std::move(printername), std::move(docname),
+      std::move(type), extractOptions(print_options));
+  worker->Queue();
+  return worker->GetPromise();
 }
 
 Napi::Value PrintFile(const Napi::CallbackInfo &iArgs) {
@@ -500,14 +661,9 @@ Napi::Value PrintFile(const Napi::CallbackInfo &iArgs) {
   }
   print_options = iArgs[3].As<Napi::Object>();
 
-  CupsOptions options(print_options);
-
-  int job_id = cupsPrintFile(printer.c_str(), filename.c_str(), docname.c_str(),
-                             options.getNumOptions(), options.get());
-
-  if (job_id == 0) {
-    Napi::Error::New(env, cupsLastErrorString()).ThrowAsJavaScriptException();
-    return env.Undefined();
-  }
-  return Napi::Number::New(env, job_id);
+  auto *worker =
+      new PrintFileWorker(env, std::move(filename), std::move(docname),
+                          std::move(printer), extractOptions(print_options));
+  worker->Queue();
+  return worker->GetPromise();
 }
