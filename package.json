@@ -35,7 +35,7 @@
     "test": "node --test test/printer.test.js",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format": "oxfmt --write && clang-format -i -style=file src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp",
+    "format": "oxfmt --write && clang-format -i -style=file src/linux_gcc_compat.h src/node_printer.cc src/node_printer_posix.cc src/node_printer_win.cc src/node_printer.hpp src/printer_model.cc src/printer_model.hpp",
     "format:check": "oxfmt --check"
   },
   "dependencies": {
