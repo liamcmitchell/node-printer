@@ -1,6 +1,6 @@
 {
   "name": "node-printer",
-  "version": "0.6.30",
+  "version": "1.0.0",
   "description": "Node.js printer bindings",
   "homepage": "https://github.com/liamcmitchell/node-printer",
   "license": "MIT",
