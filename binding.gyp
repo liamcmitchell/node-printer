@@ -90,13 +90,10 @@
         ['OS=="linux"', {
           'cflags_cc':[
             "-std=c++20",
-            # Force-include the GCC compat shim before any V8 headers.
-            # v8config.h unconditionally (re)defines V8_EXPORT, so a -D define
-            # alone cannot win. The shim pre-includes v8config.h to trip its
-            # header guard (V8CONFIG_H_), then overrides V8_EXPORT to empty,
-            # working around the GCC < 13 parse error when __attribute__ follows
-            # [[deprecated(...)]] in a class declaration (Electron 43 headers).
-            "-include <(module_root_dir)/src/linux_gcc_compat.h"
+            # Electron 43 headers can trigger a GCC parse error on declarations
+            # combining [[deprecated(...)]] and V8_EXPORT visibility attributes.
+            # Undefining V8_DEPRECATION_WARNINGS disables those deprecated attrs.
+            "-UV8_DEPRECATION_WARNINGS"
           ]
         }],
       ]
